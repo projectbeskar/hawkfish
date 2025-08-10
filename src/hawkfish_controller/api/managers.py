@@ -14,6 +14,7 @@ from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
 from ..services.security import require_role
 from ..services.tasks import TaskService
+from .task_event import get_task_service
 from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Managers", tags=["Managers"])
@@ -62,7 +63,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId and Image required")
     # remote URL: start download task
     if image.startswith("http://") or image.startswith("https://"):
-        task_service = TaskService(db_path=f"{settings.state_dir}/tasks.db")
+        task_service = get_task_service()
 
         subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
 

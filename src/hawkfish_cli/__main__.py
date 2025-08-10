@@ -57,10 +57,11 @@ def systems_show(system_id: str):
 
 
 @app.command()
-def login(url: str = typer.Option("http://localhost:8080/redfish/v1"), username: str = "admin"):
+def login(url: str = typer.Option("http://localhost:8080/redfish/v1"), username: str = "admin", insecure: bool = typer.Option(False, "--insecure", help="Skip TLS verify")):
     password = typer.prompt("Password", hide_input=True)
     body = {"UserName": username, "Password": password}
-    with httpx.Client() as client:
+    verify = False if insecure else True
+    with httpx.Client(verify=verify) as client:
         r = client.post(f"{url}/SessionService/Sessions", json=body)
         r.raise_for_status()
         tok = r.json().get("X-Auth-Token")

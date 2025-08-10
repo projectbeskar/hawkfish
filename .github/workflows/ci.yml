@@ -24,6 +24,6 @@ jobs:
       - name: Type-check (mypy)
         run: mypy src
       - name: Tests
-        run: pytest -q
+        run: pytest -q --cov=src/hawkfish_controller --cov-fail-under=80
 
 

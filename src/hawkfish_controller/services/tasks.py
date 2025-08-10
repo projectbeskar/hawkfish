@@ -8,9 +8,11 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from queue import Queue
+import sqlite3
 from threading import Lock
 
 import aiosqlite
+import contextlib
 
 TaskState = str  # "New" | "Running" | "Completed" | "Exception" | "Killed"
 
@@ -33,6 +35,7 @@ class TaskService:
         self._initialized = False
         self._broker_queue: Queue[tuple[str, dict]] = Queue()
         self._broker_started = False
+        self._inmem_tasks: dict[str, Task] = {}
 
     async def init(self) -> None:
         if self._initialized:
@@ -67,6 +70,7 @@ class TaskService:
         task_id = uuid.uuid4().hex
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         task = Task(id=task_id, name=name, state="New", percent=0, start_time=now, end_time=None, messages=[])
+        self._inmem_tasks[task_id] = task
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT INTO hf_tasks (id, name, state, percent, start_time, end_time, messages) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -77,6 +81,8 @@ class TaskService:
 
     async def get(self, task_id: str) -> Task | None:
         await self.init()
+        if task_id in self._inmem_tasks:
+            return self._inmem_tasks[task_id]
         db = await aiosqlite.connect(self.db_path)
         try:
             cur = await db.execute(
@@ -89,9 +95,11 @@ class TaskService:
             await db.close()
         if not row:
             return None
-        return Task(
+        task = Task(
             id=row[0], name=row[1], state=row[2], percent=row[3], start_time=row[4], end_time=row[5], messages=json.loads(row[6] or "[]")
         )
+        self._inmem_tasks[task_id] = task
+        return task
 
     async def list(self) -> list[Task]:
         await self.init()
@@ -104,10 +112,30 @@ class TaskService:
             await cur.close()
         finally:
             await db.close()
-        return [Task(id=r[0], name=r[1], state=r[2], percent=r[3], start_time=r[4], end_time=r[5], messages=json.loads(r[6] or "[]")) for r in rows]
+        tasks: list[Task] = []
+        for r in rows:
+            tid = r[0]
+            if tid in self._inmem_tasks:
+                tasks.append(self._inmem_tasks[tid])
+            else:
+                task = Task(id=r[0], name=r[1], state=r[2], percent=r[3], start_time=r[4], end_time=r[5], messages=json.loads(r[6] or "[]"))
+                self._inmem_tasks[tid] = task
+                tasks.append(task)
+        return tasks
 
     async def update(self, task_id: str, *, state: TaskState | None = None, percent: int | None = None, message: str | None = None, end: bool = False) -> None:
         await self.init()
+        # update in-memory immediately so GET reflects progress
+        task = await self.get(task_id)
+        if task:
+            if state is not None:
+                task.state = state
+            if percent is not None:
+                task.percent = percent
+            if message:
+                task.messages.append(message)
+            if end:
+                task.end_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         payload: dict = {"state": state, "percent": percent, "message": message, "end": end}
         self._broker_queue.put((task_id, payload))
         if not self._broker_started:
@@ -118,34 +146,34 @@ class TaskService:
             return
         self._broker_started = True
 
-        async def consumer() -> None:
-            await self.init()
-            loop = asyncio.get_event_loop()
-            while True:
-                task_id, payload = await loop.run_in_executor(None, self._broker_queue.get)
-                task = await self.get(task_id)
-                if not task:
-                    continue
-                if payload.get("state") is not None:
-                    task.state = payload["state"]
-                if payload.get("percent") is not None:
-                    task.percent = int(payload["percent"])
-                msg = payload.get("message")
-                if msg:
-                    task.messages.append(str(msg))
-                if payload.get("end"):
-                    task.end_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                async with aiosqlite.connect(self.db_path) as db:
-                    await db.execute(
+        def consumer() -> None:
+            # synchronous writer using sqlite3 to avoid event loop issues
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            try:
+                while True:
+                    task_id, payload = self._broker_queue.get()
+                    task = self._inmem_tasks.get(task_id)
+                    if not task:
+                        continue
+                    if payload.get("state") is not None:
+                        task.state = payload["state"]
+                    if payload.get("percent") is not None:
+                        task.percent = int(payload["percent"])
+                    msg = payload.get("message")
+                    if msg:
+                        task.messages.append(str(msg))
+                    if payload.get("end"):
+                        task.end_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    conn.execute(
                         "UPDATE hf_tasks SET state=?, percent=?, end_time=?, messages=? WHERE id=?",
                         (task.state, task.percent, task.end_time, json.dumps(task.messages), task_id),
                     )
-                    await db.commit()
+                    conn.commit()
+            finally:
+                with contextlib.suppress(Exception):
+                    conn.close()
 
-        def _runner() -> None:
-            asyncio.run(consumer())
-
-        t = threading.Thread(target=_runner, daemon=True)
+        t = threading.Thread(target=consumer, daemon=True)
         t.start()
 
     async def run_background(self, name: str, coro_factory: Callable[[str], Awaitable[None]]) -> Task:

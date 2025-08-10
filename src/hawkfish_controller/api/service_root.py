@@ -12,6 +12,11 @@ def get_service_root():
         "@odata.id": "/redfish/v1/",
         "Id": "RootService",
         "Name": "HawkFish Redfish Service",
+        "Links": {
+            "Managers": {"@odata.id": "/redfish/v1/Managers"},
+            "Chassis": {"@odata.id": "/redfish/v1/Chassis"},
+            "Systems": {"@odata.id": "/redfish/v1/Systems"},
+        },
         "RedfishVersion": "1.18.0",
         "Links": {
             "Systems": {"@odata.id": "/redfish/v1/Systems"},
