@@ -117,6 +117,12 @@ class SubscriptionStore:
         ]
 
     async def deliver(self, event: Event) -> None:
+        # ensure db directory exists
+        import os
+        from contextlib import suppress
+
+        with suppress(Exception):
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         subs = await self.list()
         if not subs:
             return

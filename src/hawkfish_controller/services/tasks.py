@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -124,7 +125,11 @@ class TaskService:
             except Exception as exc:  # pragma: no cover - error path
                 await self.update(task.id, state="Exception", message=str(exc), end=True)
 
-        asyncio.create_task(runner())
+        def _entry() -> None:
+            asyncio.run(runner())
+
+        t = threading.Thread(target=_entry, daemon=True)
+        t.start()
         return task
 
 
