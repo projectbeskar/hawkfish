@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
-from ..services.events import global_event_bus
+from ..services.events import SubscriptionStore, publish_event
 from ..services.tasks import TaskService
 
 router = APIRouter(prefix="/redfish/v1/Managers", tags=["Managers"])
@@ -50,7 +50,7 @@ def list_virtual_media():
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia")
-def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dict:
+def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dict[str, object]:
     system_id = body.get("SystemId")
     image = body.get("Image")
     if not system_id or not image:
@@ -58,6 +58,8 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dic
     # remote URL: start download task
     if image.startswith("http://") or image.startswith("https://"):
         task_service = TaskService(db_path=f"{settings.state_dir}/tasks.db")
+
+        subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
 
         async def job(task_id: str) -> None:
             await task_service.update(task_id, state="Running", percent=1, message=f"Downloading {image}")
@@ -84,14 +86,15 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dic
             _update_iso_index(final_path, size=size, sha256_hex=sha256.hexdigest())
             await task_service.update(task_id, message="Attaching ISO")
             driver.attach_iso(system_id, final_path)
-            await global_event_bus.publish("MediaInserted", {"systemId": system_id, "details": {"image": final_path}})
+            await publish_event("MediaInserted", {"systemId": system_id, "details": {"image": final_path}}, subs)
 
         async def start_task():
             return await task_service.run_background(name=f"Download ISO {image}", coro_factory=lambda tid: job(tid))
 
         t = asyncio.get_event_loop().run_until_complete(start_task())
         # return a dict and set 202 in route layer later if needed; keep type simple for mypy
-        return {"@odata.id": f"/redfish/v1/TaskService/Tasks/{t.id}"}
+        result: dict[str, object] = {"@odata.id": f"/redfish/v1/TaskService/Tasks/{t.id}"}
+        return result
 
     # local path under iso_dir
     if not image.startswith(settings.iso_dir):
@@ -99,7 +102,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dic
     try:
         driver.attach_iso(system_id, image)
         _update_iso_index(image)
-        asyncio.create_task(global_event_bus.publish("MediaInserted", {"systemId": system_id, "details": {"image": image}}))
+        asyncio.create_task(publish_event("MediaInserted", {"systemId": system_id, "details": {"image": image}}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db")))
         return {"TaskState": "Completed"}
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -112,7 +115,7 @@ def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId required")
     try:
         driver.detach_iso(system_id)
-        asyncio.create_task(global_event_bus.publish("MediaEjected", {"systemId": system_id}))
+        asyncio.create_task(publish_event("MediaEjected", {"systemId": system_id}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db")))
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"TaskState": "Completed"}
@@ -129,10 +132,13 @@ def _index_path() -> str:
     return os.path.join(settings.iso_dir, "index.json")
 
 
-def _read_iso_index() -> dict:
+def _read_iso_index() -> dict[str, object]:
     try:
         with open(_index_path(), encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            return {"images": []}
     except Exception:
         return {"images": []}
 
@@ -140,7 +146,10 @@ def _read_iso_index() -> dict:
 def _update_iso_index(path: str, *, size: int | None = None, sha256_hex: str | None = None) -> None:
     os.makedirs(settings.iso_dir, exist_ok=True)
     idx = _read_iso_index()
-    images = [img for img in idx.get("images", []) if img.get("path") != path]
+    images_list = idx.get("images", [])
+    if not isinstance(images_list, list):
+        images_list = []
+    images = [img for img in images_list if isinstance(img, dict) and img.get("path") != path]
     if size is None:
         try:
             size = os.path.getsize(path)

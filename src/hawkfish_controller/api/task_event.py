@@ -8,7 +8,7 @@ from fastapi import APIRouter, Response
 from fastapi.responses import StreamingResponse
 
 from ..config import settings
-from ..services.events import global_event_bus
+from ..services.events import SubscriptionStore, global_event_bus
 from ..services.tasks import TaskService
 
 router = APIRouter(tags=["Tasks", "Events"])
@@ -57,9 +57,30 @@ def get_event_service():
     return {"Id": "EventService", "Name": "Event Service", "Subscriptions": {"@odata.id": "/redfish/v1/EventService/Subscriptions"}}
 
 
+_subs: SubscriptionStore | None = None
+
+
+def get_subs() -> SubscriptionStore:
+    global _subs
+    if _subs is None:
+        _subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
+    return _subs
+
+
 @router.get("/redfish/v1/EventService/Subscriptions")
-def list_subscriptions():
-    return {"Members": []}
+async def list_subscriptions():
+    subs = await get_subs().list()
+    return {"Members": [{"Id": s["Id"], "Destination": s["Destination"], "EventTypes": s["EventTypes"]} for s in subs]}
+
+
+@router.post("/redfish/v1/EventService/Subscriptions")
+async def create_subscription(body: dict):
+    dest = body.get("Destination")
+    evts = body.get("EventTypes") or []
+    if not dest:
+        return Response(status_code=400)
+    sub_id = await get_subs().add(dest, list(map(str, evts)))
+    return {"Id": sub_id, "Destination": dest, "EventTypes": evts}
 
 
 @router.get("/events/stream")
