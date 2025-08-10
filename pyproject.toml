@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hawkfish"
+version = "0.1.0"
+description = "HawkFish: Redfish controller for KVM/libvirt"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "HawkFish Authors", email = "maintainers@hawkfish.local"}
+]
+keywords = ["redfish", "libvirt", "kvm", "fastapi", "virtualization"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Framework :: FastAPI",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+dependencies = [
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+  "pydantic>=2.5.0",
+  "pydantic-settings>=2.2.0",
+  "structlog>=24.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+  "httpx>=0.27.0",
+  "ruff>=0.4.0",
+  "mypy>=1.8.0",
+  "types-requests",
+]
+virt = [
+  # Optional at install time; required only on hosts that run against libvirt
+  "libvirt-python>=9.0.0",
+]
+
+[project.scripts]
+hawkfish-controller = "hawkfish_controller.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hawkfish_controller", "src/hawkfish_cli"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+lint.extend-select = ["I", "UP", "B", "C4", "SIM", "N", "S"]
+lint.ignore = ["S101", "B008"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+strict = false
+plugins = []
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests"]
+
+
