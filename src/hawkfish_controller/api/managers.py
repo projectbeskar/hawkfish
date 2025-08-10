@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
+from ..services.metrics import MEDIA_ACTIONS, BYTES_DOWNLOADED
 from ..services.security import require_role
 from ..services.tasks import TaskService
 from .task_event import get_task_service
@@ -84,6 +85,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
                             f.write(chunk)
                         sha256.update(chunk)
                         size += len(chunk)
+                        BYTES_DOWNLOADED.labels(source="virtualmedia").inc(len(chunk))
                         if total > 0:
                             pct = min(99, max(1, int(size * 100 / total)))
                             await task_service.update(task_id, percent=pct)
@@ -93,6 +95,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
             await task_service.update(task_id, message="Attaching ISO")
             driver.attach_iso(system_id, final_path)
             await publish_event("MediaInserted", {"systemId": system_id, "details": {"image": final_path}}, subs)
+            MEDIA_ACTIONS.labels(action="insert", result="success").inc()
 
         async def start_task():
             return await task_service.run_background(name=f"Download ISO {image}", coro_factory=lambda tid: job(tid))
@@ -121,6 +124,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
         driver.attach_iso(system_id, image)
         _update_iso_index(image)
         anyio.from_thread.run(publish_event, "MediaInserted", {"systemId": system_id, "details": {"image": image}}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db"))
+        MEDIA_ACTIONS.labels(action="insert", result="success").inc()
         return {"TaskState": "Completed"}
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -136,6 +140,7 @@ def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session
     try:
         driver.detach_iso(system_id)
         anyio.from_thread.run(publish_event, "MediaEjected", {"systemId": system_id}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db"))
+        MEDIA_ACTIONS.labels(action="eject", result="success").inc()
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"TaskState": "Completed"}

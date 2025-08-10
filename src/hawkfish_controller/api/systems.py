@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
+from ..services.metrics import POWER_ACTIONS
 from ..services.security import require_role
 from .errors import redfish_error
 from .sessions import require_session
@@ -54,7 +55,9 @@ def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = D
         from anyio import from_thread as _from_thread
         subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
         _from_thread.run(publish_event, "PowerStateChanged", {"systemId": system_id, "details": {"reset": reset_type}}, subs)
+        POWER_ACTIONS.labels(reset_type=reset_type, result="success").inc()
     except LibvirtError as exc:
+        POWER_ACTIONS.labels(reset_type=reset_type, result="error").inc()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"TaskState": "Completed"}
 
