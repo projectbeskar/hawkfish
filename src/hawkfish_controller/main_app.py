@@ -1,3 +1,4 @@
+import structlog
 from fastapi import FastAPI
 
 from .api.chassis import router as chassis_router
@@ -8,6 +9,7 @@ from .api.sessions import router as sessions_router
 from .api.systems import router as systems_router
 from .api.task_event import router as task_event_router
 from .config import ensure_directories, settings
+from .middleware import MetricsLoggingMiddleware
 
 
 def create_app() -> FastAPI:
@@ -33,6 +35,8 @@ def create_app() -> FastAPI:
     )
 
     ensure_directories()
+    structlog.configure(processors=[structlog.processors.JSONRenderer()])
+    app.add_middleware(MetricsLoggingMiddleware)
 
     app.include_router(service_root_router)
     app.include_router(systems_router)

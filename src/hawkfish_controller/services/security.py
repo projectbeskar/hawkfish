@@ -61,3 +61,12 @@ def require_role(required: str, actual: str) -> bool:
     return order.get(actual, 0) >= order.get(required, 0)
 
 
+async def user_count() -> int:
+    await ensure_user_tables(f"{settings.state_dir}/auth.db")
+    async with aiosqlite.connect(f"{settings.state_dir}/auth.db") as db:
+        cur = await db.execute("SELECT COUNT(*) FROM hf_users")
+        row = await cur.fetchone()
+        await cur.close()
+    return int(row[0]) if row else 0
+
+

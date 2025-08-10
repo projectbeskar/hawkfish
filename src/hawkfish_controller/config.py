@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     network_name: str = Field(default="default", alias="HF_NETWORK")
     api_bind: str = Field(default="0.0.0.0:8080", alias="HF_API_BIND")
     dev_tls: str = Field(default="off", alias="HF_DEV_TLS")
+    auth_mode: str = Field(default="none", alias="HF_AUTH")
 
     class Config:
         env_file = ".env"

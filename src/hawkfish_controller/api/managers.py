@@ -12,7 +12,9 @@ from fastapi.responses import JSONResponse
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
+from ..services.security import require_role
 from ..services.tasks import TaskService
+from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Managers", tags=["Managers"])
 
@@ -51,7 +53,9 @@ def list_virtual_media():
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia", response_model=None)
-def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
+def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+    if not require_role("operator", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
     image = body.get("Image")
     if not system_id or not image:
@@ -122,7 +126,9 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.EjectMedia")
-def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
+def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+    if not require_role("operator", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
     if not system_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId required")
