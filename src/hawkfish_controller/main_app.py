@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from .api.chassis import router as chassis_router
 from .api.managers import router as managers_router
 from .api.orchestrator import router as orchestrator_router
 from .api.service_root import router as service_root_router
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
             {"name": "Systems", "description": "Computer Systems and power operations"},
             {"name": "Sessions", "description": "SessionService"},
             {"name": "Managers", "description": "Manager and VirtualMedia"},
+            {"name": "Chassis", "description": "Logical chassis"},
             {"name": "Tasks", "description": "TaskService"},
             {"name": "Events", "description": "EventService"},
             {"name": "Orchestrator", "description": "Node lifecycle"},
@@ -36,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(systems_router)
     app.include_router(sessions_router)
     app.include_router(managers_router)
+    app.include_router(chassis_router)
     app.include_router(task_event_router)
     app.include_router(orchestrator_router)
 
