@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # State
     state_dir: str = Field(default="/var/lib/hawkfish", alias="HF_STATE_DIR")
     iso_dir: str = Field(default="/var/lib/hawkfish/isos", alias="HF_ISO_DIR")
+    network_name: str = Field(default="default", alias="HF_NETWORK")
+    api_bind: str = Field(default="0.0.0.0:8080", alias="HF_API_BIND")
+    dev_tls: str = Field(default="off", alias="HF_DEV_TLS")
 
     class Config:
         env_file = ".env"
@@ -25,5 +28,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def ensure_directories() -> None:
+    import os
+    from contextlib import suppress
+
+    for path in {settings.state_dir, settings.iso_dir}:
+        with suppress(Exception):
+            os.makedirs(path, exist_ok=True)
 
 

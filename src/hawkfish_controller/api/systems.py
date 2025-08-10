@@ -45,3 +45,28 @@ def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = D
     return {"TaskState": "Completed"}
 
 
+@router.post("/{system_id}/Actions/ComputerSystem.SetDefaultBootOrder")
+def set_default_boot_order(system_id: str, driver: LibvirtDriver = Depends(get_driver)):
+    # For now, set to HDD persistently
+    try:
+        driver.set_boot_override(system_id, target="hdd", persist=True)
+    except LibvirtError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"TaskState": "Completed"}
+
+
+@router.patch("/{system_id}")
+def set_boot_override(system_id: str, body: dict[str, Any], driver: LibvirtDriver = Depends(get_driver)):
+    boot = body.get("Boot") or {}
+    target = boot.get("BootSourceOverrideTarget")
+    enabled = boot.get("BootSourceOverrideEnabled", "Once")
+    if not target:
+        raise HTTPException(status_code=400, detail="Boot.BootSourceOverrideTarget required")
+    persist = enabled.lower() == "continuous"
+    try:
+        driver.set_boot_override(system_id, target=target, persist=persist)
+    except LibvirtError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"TaskState": "Completed"}
+
+

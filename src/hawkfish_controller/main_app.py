@@ -5,7 +5,7 @@ from .api.service_root import router as service_root_router
 from .api.sessions import router as sessions_router
 from .api.systems import router as systems_router
 from .api.task_event import router as task_event_router
-from .config import settings
+from .config import ensure_directories, settings
 
 
 def create_app() -> FastAPI:
@@ -27,6 +27,8 @@ def create_app() -> FastAPI:
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
     )
+
+    ensure_directories()
 
     app.include_router(service_root_router)
     app.include_router(systems_router)
