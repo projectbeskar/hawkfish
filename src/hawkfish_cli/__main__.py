@@ -46,6 +46,17 @@ def systems():
 
 
 @app.command()
+def systems_show(system_id: str):
+    url = f"{api_base()}/Systems/{system_id}"
+    with httpx.Client() as client:
+        r = client.get(url)
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json(), indent=2))
+
+
+@app.command()
 def login(url: str = typer.Option("http://localhost:8080/redfish/v1"), username: str = "admin"):
     password = typer.prompt("Password", hide_input=True)
     body = {"UserName": username, "Password": password}
@@ -120,6 +131,24 @@ def tasks():
         r = client.get(f"{api_base()}/TaskService/Tasks")
         r.raise_for_status()
         typer.echo(json.dumps(r.json(), indent=2))
+
+
+@app.command()
+def task_watch(task_id: str):
+    url = f"{api_base()}/TaskService/Tasks/{task_id}"
+    with httpx.Client() as client:
+        while True:
+            r = client.get(url)
+            if r.status_code == 404:
+                typer.echo("Task not found", err=True)
+                raise typer.Exit(code=1)
+            data = r.json()
+            typer.echo(json.dumps({"state": data.get("TaskState"), "percent": data.get("PercentComplete")}))
+            if data.get("TaskState") in {"Completed", "Exception", "Killed"}:
+                break
+            import time as _t
+
+            _t.sleep(1)
 
 
 @app.command()

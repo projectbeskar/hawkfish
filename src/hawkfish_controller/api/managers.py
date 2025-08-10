@@ -7,6 +7,7 @@ import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
@@ -49,8 +50,8 @@ def list_virtual_media():
     }
 
 
-@router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia")
-def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dict[str, object]:
+@router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia", response_model=None)
+def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
     system_id = body.get("SystemId")
     image = body.get("Image")
     if not system_id or not image:
@@ -92,9 +93,8 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dic
             return await task_service.run_background(name=f"Download ISO {image}", coro_factory=lambda tid: job(tid))
 
         t = asyncio.get_event_loop().run_until_complete(start_task())
-        # return a dict and set 202 in route layer later if needed; keep type simple for mypy
-        result: dict[str, object] = {"@odata.id": f"/redfish/v1/TaskService/Tasks/{t.id}"}
-        return result
+        location = f"/redfish/v1/TaskService/Tasks/{t.id}"
+        return JSONResponse(content={"@odata.id": location}, status_code=202, headers={"Location": location})
 
     # local path under iso_dir
     if not image.startswith(settings.iso_dir):

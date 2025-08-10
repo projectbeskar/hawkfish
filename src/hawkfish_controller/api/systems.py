@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
+from ..services.events import SubscriptionStore, publish_event
 
 router = APIRouter(prefix="/redfish/v1/Systems", tags=["Systems"])
 
@@ -40,6 +41,11 @@ def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = D
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ResetType required")
     try:
         driver.reset_system(system_id, reset_type)
+        # fire event
+        subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
+        import asyncio as _asyncio
+
+        _asyncio.create_task(publish_event("PowerStateChanged", {"systemId": system_id, "details": {"reset": reset_type}}, subs))
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"TaskState": "Completed"}
@@ -65,6 +71,10 @@ def set_boot_override(system_id: str, body: dict[str, Any], driver: LibvirtDrive
     persist = enabled.lower() == "continuous"
     try:
         driver.set_boot_override(system_id, target=target, persist=persist)
+        subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
+        import asyncio as _asyncio
+
+        _asyncio.create_task(publish_event("BootOverrideSet", {"systemId": system_id, "details": {"target": target, "persist": persist}}, subs))
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"TaskState": "Completed"}
