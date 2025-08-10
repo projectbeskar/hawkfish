@@ -152,6 +152,37 @@ def task_watch(task_id: str):
 
 
 @app.command()
+def nodes_create(name: str, vcpus: int = 2, memory: int = 2048, disk: int = 20, image_url: str = ""):
+    body = {
+        "Name": name,
+        "CPU": vcpus,
+        "MemoryMiB": memory,
+        "DiskGiB": disk,
+        "Image": {"url": image_url} if image_url else {},
+    }
+    with httpx.Client() as client:
+        r = client.post(f"{api_base()}/Systems", json=body)
+        if r.status_code not in (200, 202):
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        loc = r.headers.get("Location")
+        if loc:
+            typer.echo(f"Task: {loc}")
+
+
+@app.command()
+def nodes_delete(name: str, delete_storage: bool = False):
+    with httpx.Client() as client:
+        r = client.delete(f"{api_base()}/Systems/{name}", params={"delete_storage": json.dumps(delete_storage)})
+        if r.status_code not in (200, 202):
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        loc = r.headers.get("Location")
+        if loc:
+            typer.echo(f"Task: {loc}")
+
+
+@app.command()
 def events_sse():
     base = api_base().replace('/redfish/v1','')
     with httpx.Client(timeout=300) as client, client.stream("GET", f"{base}/events/stream") as resp:
