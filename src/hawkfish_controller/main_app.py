@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from .api.managers import router as managers_router
+from .api.orchestrator import router as orchestrator_router
 from .api.service_root import router as service_root_router
 from .api.sessions import router as sessions_router
 from .api.systems import router as systems_router
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
             {"name": "Managers", "description": "Manager and VirtualMedia"},
             {"name": "Tasks", "description": "TaskService"},
             {"name": "Events", "description": "EventService"},
+            {"name": "Orchestrator", "description": "Node lifecycle"},
         ],
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
@@ -35,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(managers_router)
     app.include_router(task_event_router)
+    app.include_router(orchestrator_router)
 
     return app
 

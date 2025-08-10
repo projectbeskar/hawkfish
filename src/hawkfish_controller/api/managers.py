@@ -66,12 +66,12 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
             await task_service.update(task_id, state="Running", percent=1, message=f"Downloading {image}")
             dest_dir = settings.iso_dir
             os.makedirs(dest_dir, exist_ok=True)
-            safe_name = _safe_name_from_url(image)
+            safe_name = _safe_name_from_url(str(image))
             tmp_fd, tmp_path = tempfile.mkstemp(prefix="iso_", suffix=".part", dir=dest_dir)
             os.close(tmp_fd)
             sha256 = hashlib.sha256()
             size = 0
-            async with httpx.AsyncClient(follow_redirects=True, timeout=300) as client, client.stream("GET", image) as resp:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=300) as client, client.stream("GET", str(image)) as resp:
                     resp.raise_for_status()
                     total = int(resp.headers.get("content-length", "0") or 0)
                     async for chunk in resp.aiter_bytes(1024 * 256):
