@@ -1,7 +1,17 @@
+import asyncio
+import hashlib
+import json
+import os
+import tempfile
+import time
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
+from ..services.events import global_event_bus
+from ..services.tasks import TaskService
 
 router = APIRouter(prefix="/redfish/v1/Managers", tags=["Managers"])
 
@@ -35,20 +45,64 @@ def list_virtual_media():
         "Members": [
             {"@odata.id": "/redfish/v1/Managers/HawkFish/VirtualMedia/Cd"},
         ],
+        "Oem": {"HawkFish": {"AvailableImages": _read_iso_index().get("images", [])}},
     }
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia")
-def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
+def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver)) -> dict:
     system_id = body.get("SystemId")
     image = body.get("Image")
     if not system_id or not image:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId and Image required")
+    # remote URL: start download task
+    if image.startswith("http://") or image.startswith("https://"):
+        task_service = TaskService(db_path=f"{settings.state_dir}/tasks.db")
+
+        async def job(task_id: str) -> None:
+            await task_service.update(task_id, state="Running", percent=1, message=f"Downloading {image}")
+            dest_dir = settings.iso_dir
+            os.makedirs(dest_dir, exist_ok=True)
+            safe_name = _safe_name_from_url(image)
+            tmp_fd, tmp_path = tempfile.mkstemp(prefix="iso_", suffix=".part", dir=dest_dir)
+            os.close(tmp_fd)
+            sha256 = hashlib.sha256()
+            size = 0
+            async with httpx.AsyncClient(follow_redirects=True, timeout=300) as client, client.stream("GET", image) as resp:
+                    resp.raise_for_status()
+                    total = int(resp.headers.get("content-length", "0") or 0)
+                    async for chunk in resp.aiter_bytes(1024 * 256):
+                        with open(tmp_path, "ab") as f:
+                            f.write(chunk)
+                        sha256.update(chunk)
+                        size += len(chunk)
+                        if total > 0:
+                            pct = min(99, max(1, int(size * 100 / total)))
+                            await task_service.update(task_id, percent=pct)
+            final_path = os.path.join(dest_dir, f"{safe_name}.iso")
+            os.replace(tmp_path, final_path)
+            _update_iso_index(final_path, size=size, sha256_hex=sha256.hexdigest())
+            await task_service.update(task_id, message="Attaching ISO")
+            driver.attach_iso(system_id, final_path)
+            await global_event_bus.publish("MediaInserted", {"systemId": system_id, "details": {"image": final_path}})
+
+        async def start_task():
+            return await task_service.run_background(name=f"Download ISO {image}", coro_factory=lambda tid: job(tid))
+
+        t = asyncio.get_event_loop().run_until_complete(start_task())
+        # return a dict and set 202 in route layer later if needed; keep type simple for mypy
+        return {"@odata.id": f"/redfish/v1/TaskService/Tasks/{t.id}"}
+
+    # local path under iso_dir
+    if not image.startswith(settings.iso_dir):
+        raise HTTPException(status_code=400, detail="Local images must be under HF_ISO_DIR")
     try:
         driver.attach_iso(system_id, image)
+        _update_iso_index(image)
+        asyncio.create_task(global_event_bus.publish("MediaInserted", {"systemId": system_id, "details": {"image": image}}))
+        return {"TaskState": "Completed"}
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    return {"TaskState": "Completed"}
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.EjectMedia")
@@ -58,8 +112,43 @@ def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId required")
     try:
         driver.detach_iso(system_id)
+        asyncio.create_task(global_event_bus.publish("MediaEjected", {"systemId": system_id}))
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"TaskState": "Completed"}
+
+
+def _safe_name_from_url(url: str) -> str:
+    base = url.split("?")[0].rstrip("/").split("/")[-1]
+    if not base.lower().endswith((".iso", ".img")):
+        base = base + "_remote"
+    return "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in base)
+
+
+def _index_path() -> str:
+    return os.path.join(settings.iso_dir, "index.json")
+
+
+def _read_iso_index() -> dict:
+    try:
+        with open(_index_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"images": []}
+
+
+def _update_iso_index(path: str, *, size: int | None = None, sha256_hex: str | None = None) -> None:
+    os.makedirs(settings.iso_dir, exist_ok=True)
+    idx = _read_iso_index()
+    images = [img for img in idx.get("images", []) if img.get("path") != path]
+    if size is None:
+        try:
+            size = os.path.getsize(path)
+        except Exception:
+            size = 0
+    entry = {"path": path, "size": size, "sha256": sha256_hex, "last_used": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    images.append(entry)
+    with open(_index_path(), "w", encoding="utf-8") as f:
+        json.dump({"images": images}, f)
 
 
