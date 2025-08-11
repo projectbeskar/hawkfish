@@ -3,9 +3,12 @@ from fastapi import FastAPI
 
 from .api.batch import router as batch_router
 from .api.chassis import router as chassis_router
+from .api.hosts import router as hosts_router
+from .api.images import router as images_router
 from .api.import_adopt import router as import_router
 from .api.ipxe import router as ipxe_router
 from .api.managers import router as managers_router
+from .api.netprofiles import router as netprofiles_router
 from .api.orchestrator import router as orchestrator_router
 from .api.profiles import router as profiles_router
 from .api.service_root import router as service_root_router
@@ -37,6 +40,9 @@ def create_app() -> FastAPI:
             {"name": "Batches", "description": "Batch provisioning"},
             {"name": "PXE", "description": "iPXE helper"},
             {"name": "Import", "description": "Import/adopt domains"},
+            {"name": "Hosts", "description": "Host pool management"},
+            {"name": "Images", "description": "Image catalog"},
+            {"name": "NetworkProfiles", "description": "Network profile templates"},
         ],
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
@@ -57,6 +63,9 @@ def create_app() -> FastAPI:
     app.include_router(batch_router)
     app.include_router(ipxe_router)
     app.include_router(import_router)
+    app.include_router(hosts_router)
+    app.include_router(images_router)
+    app.include_router(netprofiles_router)
 
     return app
 

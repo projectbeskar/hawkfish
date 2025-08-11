@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -84,6 +85,20 @@ class SubscriptionStore:
                     );
                     """
                 )
+                # Outbound event queue
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS hf_outbox (
+                        id TEXT PRIMARY KEY,
+                        subscription_id TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at TEXT NOT NULL,
+                        last_error TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                    """
+                )
                 await db.commit()
             finally:
                 await db.close()
@@ -152,41 +167,154 @@ class SubscriptionStore:
             await db.close()
 
     async def deliver(self, event: Event) -> None:
+        """Queue events for durable delivery."""
         # ensure db directory exists
         import os
         from contextlib import suppress
 
         with suppress(Exception):
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        
         subs = await self.list()
         if not subs:
             return
-        async with httpx.AsyncClient(timeout=5) as client:
-            for s in subs:
-                event_types = s.get("EventTypes") or []
-                if event_types and event.type not in event_types:
-                    continue
-                system_ids = s.get("SystemIds") or []
-                system_id = event.payload.get("systemId") if isinstance(event.payload, dict) else None
-                if system_ids and system_id not in system_ids:
-                    continue
-                payload = {"id": event.id, "type": event.type, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **event.payload}
-                headers = {}
-                secret = (s.get("Secret") or "").encode()
-                if secret:
-                    import hashlib
-                    import hmac
-                    sig = hmac.new(secret, json.dumps(payload, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
-                    headers["X-HawkFish-Signature"] = f"sha256={sig}"
-                for attempt in range(5):
-                    try:
-                        resp = await client.post(s["Destination"], json=payload, headers=headers)
-                        if resp.status_code < 500:
-                            break
-                    except Exception as exc:  # pragma: no cover - network
-                        if attempt == 4:
-                            await self._dead_letter(s["Destination"], event, str(exc))
-                        await asyncio.sleep(2 ** attempt)
+        
+        # Queue matching subscriptions for async delivery
+        for s in subs:
+            event_types = s.get("EventTypes") or []
+            if event_types and event.type not in event_types:
+                continue
+            system_ids = s.get("SystemIds") or []
+            system_id = event.payload.get("systemId") if isinstance(event.payload, dict) else None
+            if system_ids and system_id not in system_ids:
+                continue
+            
+            # Create delivery payload
+            payload = {"id": event.id, "type": event.type, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **event.payload}
+            secret = (s.get("Secret") or "").encode()
+            if secret:
+                import hashlib
+                import hmac
+                sig = hmac.new(secret, json.dumps(payload, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+                payload["_signature"] = f"sha256={sig}"
+            
+            # Queue for delivery
+            await self._queue_delivery(s["Id"], payload)
+        
+        # Start delivery worker if not already running
+        self._ensure_delivery_worker()
+
+    async def _queue_delivery(self, subscription_id: str, payload: dict[str, Any]) -> None:
+        """Add a delivery to the outbound queue."""
+        await self.init()
+        delivery_id = uuid.uuid4().hex
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT INTO hf_outbox (id, subscription_id, payload, attempts, next_attempt_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (delivery_id, subscription_id, json.dumps(payload), 0, now, now),
+            )
+            await db.commit()
+
+    def _ensure_delivery_worker(self) -> None:
+        """Ensure the delivery worker is running."""
+        if hasattr(self, "_worker_started") and self._worker_started:
+            return
+        
+        self._worker_started = True
+        
+        def worker() -> None:
+            import sqlite3
+            import time as sync_time
+            
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            
+            while True:
+                try:
+                    # Get pending deliveries
+                    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    cursor = conn.execute(
+                        "SELECT id, subscription_id, payload, attempts FROM hf_outbox WHERE next_attempt_at <= ? ORDER BY created_at LIMIT 10",
+                        (now_str,),
+                    )
+                    rows = cursor.fetchall()
+                    
+                    if not rows:
+                        sync_time.sleep(5)  # No work, sleep
+                        continue
+                    
+                    for row in rows:
+                        delivery_id, sub_id, payload_json, attempts = row
+                        self._process_delivery_sync(conn, delivery_id, sub_id, payload_json, attempts)
+                    
+                except Exception:  # pragma: no cover - error handling
+                    sync_time.sleep(10)  # Error, back off
+            
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+    def _process_delivery_sync(self, conn, delivery_id: str, subscription_id: str, payload_json: str, attempts: int) -> None:
+        """Process a single delivery synchronously."""
+        
+        max_attempts = 5
+        if attempts >= max_attempts:
+            # Move to dead letters
+            payload = json.loads(payload_json)
+            conn.execute(
+                "INSERT OR REPLACE INTO hf_deadletters (id, destination, event_type, payload, error, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex, "unknown", payload.get("type", ""), payload_json, "Max attempts exceeded", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
+            )
+            conn.execute("DELETE FROM hf_outbox WHERE id=?", (delivery_id,))
+            conn.commit()
+            return
+        
+        try:
+            # Get subscription details
+            cursor = conn.execute("SELECT destination, secret FROM hf_subscriptions WHERE id=?", (subscription_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                # Subscription deleted, remove from queue
+                conn.execute("DELETE FROM hf_outbox WHERE id=?", (delivery_id,))
+                conn.commit()
+                return
+            
+            destination, secret = sub_row
+            payload = json.loads(payload_json)
+            
+            # Build headers
+            headers = {"Content-Type": "application/json"}
+            if secret and payload.get("_signature"):
+                headers["X-HawkFish-Signature"] = payload.pop("_signature")
+            
+            # Make delivery
+            with httpx.Client(timeout=10) as client:
+                resp = client.post(destination, json=payload, headers=headers)
+                if resp.status_code < 500:
+                    # Success or permanent failure, remove from queue
+                    conn.execute("DELETE FROM hf_outbox WHERE id=?", (delivery_id,))
+                    conn.commit()
+                    return
+            
+            # Retry with exponential backoff
+            self._schedule_retry_sync(conn, delivery_id, attempts + 1)
+            
+        except Exception as exc:  # pragma: no cover - network
+            self._schedule_retry_sync(conn, delivery_id, attempts + 1, str(exc))
+
+    def _schedule_retry_sync(self, conn, delivery_id: str, attempts: int, error: str | None = None) -> None:
+        """Schedule a retry with exponential backoff."""
+        
+        # Exponential backoff: 2^attempts seconds
+        delay_seconds = 2 ** min(attempts, 8)  # Cap at 256 seconds
+        next_attempt = time.time() + delay_seconds
+        next_attempt_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(next_attempt))
+        
+        conn.execute(
+            "UPDATE hf_outbox SET attempts=?, next_attempt_at=?, last_error=? WHERE id=?",
+            (attempts, next_attempt_str, error, delivery_id),
+        )
+        conn.commit()
 
     async def _dead_letter(self, destination: str, event: Event, error: str) -> None:
         db = await aiosqlite.connect(self.db_path)
@@ -212,7 +340,7 @@ global_event_bus = EventBus()
 
 async def publish_event(event_type: str, payload: dict[str, Any], subscriptions: SubscriptionStore) -> None:
     event = await global_event_bus.publish(event_type, payload)
-    # deliver synchronously to ensure deterministic behavior in tests
+    # deliver asynchronously via durable queue
     await subscriptions.deliver(event)
 
 

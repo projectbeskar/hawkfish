@@ -11,6 +11,7 @@ import httpx
 
 from ..config import settings
 from .events import SubscriptionStore, publish_event
+from .hosts import PlacementRequest, get_default_host, schedule_placement, update_host_allocation
 from .tasks import TaskService
 
 
@@ -24,6 +25,7 @@ class NodeSpec:
     boot_primary: str | None
     image_url: str | None
     cloud_init: dict[str, Any] | None
+    required_labels: dict[str, Any] | None = None
 
 
 def _ensure_storage_dirs() -> dict[str, Path]:
@@ -41,7 +43,25 @@ async def create_node(spec: NodeSpec, task_service: TaskService, subs: Subscript
     task = await task_service.create(name=f"Create node {spec.name}")
 
     async def job(task_id: str) -> None:
-        await task_service.update(task_id, state="Running", percent=1, message="Preparing storage")
+        # Host placement
+        await task_service.update(task_id, state="Running", percent=1, message="Finding suitable host")
+        placement_req = PlacementRequest(
+            vcpus=spec.vcpus,
+            memory_mib=spec.memory_mib,
+            required_labels=spec.required_labels,
+        )
+        host = await schedule_placement(placement_req)
+        if not host:
+            host = await get_default_host()
+        if not host:
+            raise RuntimeError("No suitable host found for placement")
+        
+        await task_service.update(task_id, percent=5, message=f"Placed on host {host.name}")
+        
+        # Update host allocation
+        await update_host_allocation(host.id, spec.vcpus, spec.memory_mib)
+        
+        await task_service.update(task_id, state="Running", percent=10, message="Preparing storage")
         dirs = _ensure_storage_dirs()
         vol_path = dirs["volumes"] / f"{spec.name}.qcow2"
         # create volume

@@ -311,6 +311,143 @@ def subs_create(destination: str, event_types: str = "", system_ids: str = "", s
         typer.echo(json.dumps(r.json()))
 
 
+# Hosts
+@app.command()
+def hosts():
+    with httpx.Client() as client:
+        r = client.get(f"{api_base()}/Oem/HawkFish/Hosts", headers=auth_headers())
+        r.raise_for_status()
+        typer.echo(json.dumps(r.json(), indent=2))
+
+
+@app.command()
+def host_add(uri: str, name: str, labels: str = ""):
+    label_dict = {}
+    if labels:
+        try:
+            label_dict = json.loads(labels)
+        except json.JSONDecodeError:
+            # Simple key=value parsing
+            for pair in labels.split(","):
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
+                    label_dict[key.strip()] = value.strip()
+    
+    body = {"URI": uri, "Name": name, "Labels": label_dict}
+    with httpx.Client() as client:
+        r = client.post(f"{api_base()}/Oem/HawkFish/Hosts", json=body, headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json()))
+
+
+@app.command()
+def host_rm(host_id: str):
+    with httpx.Client() as client:
+        r = client.delete(f"{api_base()}/Oem/HawkFish/Hosts/{host_id}", headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo("Host removed")
+
+
+# Images
+@app.command()
+def images():
+    with httpx.Client() as client:
+        r = client.get(f"{api_base()}/Oem/HawkFish/Images", headers=auth_headers())
+        r.raise_for_status()
+        typer.echo(json.dumps(r.json(), indent=2))
+
+
+@app.command()
+def image_add(name: str, version: str, url: str = "", sha256: str = "", labels: str = ""):
+    label_dict = {}
+    if labels:
+        try:
+            label_dict = json.loads(labels)
+        except json.JSONDecodeError:
+            # Simple key=value parsing
+            for pair in labels.split(","):
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
+                    label_dict[key.strip()] = value.strip()
+    
+    body = {"Name": name, "Version": version, "Labels": label_dict}
+    if url:
+        body["URL"] = url
+    if sha256:
+        body["SHA256"] = sha256
+    
+    with httpx.Client() as client:
+        r = client.post(f"{api_base()}/Oem/HawkFish/Images", json=body, headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json()))
+
+
+@app.command()
+def image_rm(image_id: str):
+    with httpx.Client() as client:
+        r = client.delete(f"{api_base()}/Oem/HawkFish/Images/{image_id}", headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo("Image removed")
+
+
+# Adoptions
+@app.command()
+def adoptions():
+    with httpx.Client() as client:
+        r = client.get(f"{api_base()}/Oem/HawkFish/Import/Adoptions", headers=auth_headers())
+        r.raise_for_status()
+        typer.echo(json.dumps(r.json(), indent=2))
+
+
+# Network Profiles
+@app.command()
+def netprofiles():
+    with httpx.Client() as client:
+        r = client.get(f"{api_base()}/Oem/HawkFish/NetworkProfiles", headers=auth_headers())
+        r.raise_for_status()
+        typer.echo(json.dumps(r.json(), indent=2))
+
+
+@app.command()
+def netprofile_create(name: str, libvirt_network: str = "", bridge: str = "", vlan: int = 0, mac_policy: str = "auto", count: int = 1):
+    body = {
+        "Name": name,
+        "MACPolicy": mac_policy,
+        "CountPerSystem": count,
+    }
+    if libvirt_network:
+        body["LibvirtNetwork"] = libvirt_network
+    if bridge:
+        body["Bridge"] = bridge
+    if vlan > 0:
+        body["VLAN"] = vlan
+    
+    with httpx.Client() as client:
+        r = client.post(f"{api_base()}/Oem/HawkFish/NetworkProfiles", json=body, headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json()))
+
+
+@app.command()
+def netprofile_rm(profile_id: str):
+    with httpx.Client() as client:
+        r = client.delete(f"{api_base()}/Oem/HawkFish/NetworkProfiles/{profile_id}", headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo("Network profile removed")
+
+
 def main() -> None:
     app()
 
