@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from ..services.libvirt_pool import pool_manager
+
 
 @dataclass
 class LibvirtError(Exception):
@@ -17,33 +19,15 @@ class LibvirtError(Exception):
 class LibvirtDriver:
     def __init__(self, uri: str) -> None:
         self.uri = uri
-        self._libvirt = None
-        self._conn = None
-
-    # --- libvirt helpers ---
-    def _ensure_import(self) -> None:
-        if self._libvirt is None:
-            try:
-                import libvirt  # type: ignore
-
-                self._libvirt = libvirt
-            except Exception:  # pragma: no cover - environment-dependent
-                self._libvirt = None
 
     def _connect(self):
-        self._ensure_import()
-        if self._libvirt is None:
-            # Running without libvirt bindings; behave as no systems
-            return None
-        if self._conn is not None:
-            return self._conn
-        try:
-            self._conn = self._libvirt.open(self.uri)
-            return self._conn
-        except Exception as exc:  # pragma: no cover - requires real libvirt
+        """Get a connection from the pool."""
+        conn = pool_manager.get_connection(self.uri)
+        if conn is None:
             raise LibvirtError(
-                f"Failed to connect to libvirt at {self.uri}: {exc}", status_code=503
-            ) from exc
+                f"Failed to get connection to libvirt at {self.uri}", status_code=503
+            )
+        return conn
 
     # --- public API ---
     def list_systems(self) -> list[dict[str, Any]]:

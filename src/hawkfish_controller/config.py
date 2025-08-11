@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     auth_mode: str = Field(default="none", alias="HF_AUTH")
     tls_cert_path: str | None = Field(default=None, alias="HF_TLS_CERT")
     tls_key_path: str | None = Field(default=None, alias="HF_TLS_KEY")
+    
+    # UI
+    ui_enabled: bool = Field(default=False, alias="HF_UI_ENABLED")
+    
+    # Libvirt Connection Pool
+    libvirt_pool_min: int = Field(default=1, alias="HF_LIBVIRT_POOL_MIN")
+    libvirt_pool_max: int = Field(default=10, alias="HF_LIBVIRT_POOL_MAX") 
+    libvirt_pool_ttl_sec: int = Field(default=300, alias="HF_LIBVIRT_POOL_TTL_SEC")
 
     class Config:
         env_file = ".env"

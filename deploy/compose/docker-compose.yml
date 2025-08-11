@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  hawkfish:
+    image: hawkfish/hawkfish-controller:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # Basic configuration
+      HF_API_HOST: "0.0.0.0"
+      HF_API_PORT: "8080"
+      HF_STATE_DIR: "/var/lib/hawkfish"
+      HF_ISO_DIR: "/var/lib/hawkfish/isos"
+      
+      # Libvirt configuration (adjust as needed)
+      LIBVIRT_URI: "qemu:///system"
+      
+      # Auth mode (use "none" for dev, "sessions" for production)
+      HF_AUTH: "sessions"
+      HF_DEV_TLS: "off"
+      
+      # UI
+      HF_UI_ENABLED: "true"
+      
+      # Connection pooling
+      HF_LIBVIRT_POOL_MIN: "1"
+      HF_LIBVIRT_POOL_MAX: "10"
+      HF_LIBVIRT_POOL_TTL_SEC: "300"
+    volumes:
+      # State directory for persistent data
+      - hawkfish-state:/var/lib/hawkfish
+      
+      # Mount libvirt socket for local access (Linux only)
+      # Uncomment if running on same host as libvirt
+      # - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+      
+      # Custom TLS certificates (if using custom TLS mode)
+      # - ./certs:/etc/hawkfish/certs:ro
+      
+      # Optional configuration file
+      # - ./hawkfish.toml:/etc/hawkfish/hawkfish.toml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/redfish/v1/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Security
+    user: "1000:1000"  # Run as non-root user
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  hawkfish-state:
+    driver: local

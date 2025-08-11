@@ -1,0 +1,137 @@
+---
+# HawkFish Ansible Playbook Example
+# This demonstrates VM lifecycle management using HawkFish
+
+- name: HawkFish VM Management Demo
+  hosts: localhost
+  gather_facts: false
+  vars:
+    hawkfish_endpoint: "{{ hawkfish_endpoint | default('http://localhost:8080') }}"
+    hawkfish_username: "{{ hawkfish_username | default('local') }}"
+    hawkfish_password: "{{ hawkfish_password | default('') }}"
+    
+  tasks:
+    - name: Create a profile for web servers
+      hawkfish.virtualization.hawkfish_profile:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        name: "web-server"
+        cpu: 4
+        memory_mib: 4096
+        disk_gib: 50
+        network: "default"
+        boot_primary: "Hdd"
+        state: present
+      register: web_profile
+
+    - name: Create web server VMs
+      hawkfish.virtualization.hawkfish_system:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        name: "web-{{ item }}"
+        profile_id: "{{ web_profile.profile.id }}"
+        tags:
+          role: webserver
+          tier: frontend
+          index: "{{ item }}"
+        state: present
+      loop:
+        - "01"
+        - "02"
+        - "03"
+      register: web_servers
+
+    - name: Power on web servers
+      hawkfish.virtualization.hawkfish_power:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        system_id: "{{ item.system.id }}"
+        reset_type: "On"
+        wait: true
+        timeout: 300
+      loop: "{{ web_servers.results }}"
+      when: item.system is defined
+
+    - name: Wait for systems to be ready
+      hawkfish.virtualization.hawkfish_system:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        name: "web-{{ item }}"
+        state: present
+        wait_for_power: "On"
+        timeout: 600
+      loop:
+        - "01"
+        - "02"
+        - "03"
+
+    - name: Set up event monitoring
+      hawkfish.virtualization.hawkfish_subscription:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        destination: "https://monitoring.example.com/webhook"
+        event_types:
+          - "PowerStateChanged"
+          - "TaskUpdated"
+        system_ids: "{{ web_servers.results | map(attribute='system.id') | list }}"
+        state: present
+
+    - name: Display created systems
+      debug:
+        msg: |
+          Created web server: {{ item.system.name }}
+          ID: {{ item.system.id }}
+          Power State: {{ item.system.power_state }}
+      loop: "{{ web_servers.results }}"
+      when: item.system is defined
+
+# Cleanup playbook (run with --tags cleanup)
+- name: Cleanup HawkFish resources
+  hosts: localhost
+  gather_facts: false
+  tags: [never, cleanup]
+  vars:
+    hawkfish_endpoint: "{{ hawkfish_endpoint | default('http://localhost:8080') }}"
+    hawkfish_username: "{{ hawkfish_username | default('local') }}"
+    hawkfish_password: "{{ hawkfish_password | default('') }}"
+    
+  tasks:
+    - name: Power off web servers
+      hawkfish.virtualization.hawkfish_power:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        system_id: "{{ item }}"
+        reset_type: "ForceOff"
+        wait: true
+      loop:
+        - "web-01"
+        - "web-02"
+        - "web-03"
+      ignore_errors: true
+
+    - name: Remove web server VMs
+      hawkfish.virtualization.hawkfish_system:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        name: "{{ item }}"
+        state: absent
+        force: true
+      loop:
+        - "web-01"
+        - "web-02"
+        - "web-03"
+
+    - name: Remove web server profile
+      hawkfish.virtualization.hawkfish_profile:
+        endpoint: "{{ hawkfish_endpoint }}"
+        username: "{{ hawkfish_username }}"
+        password: "{{ hawkfish_password }}"
+        name: "web-server"
+        state: absent

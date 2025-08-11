@@ -5,6 +5,8 @@ from pathlib import Path
 import httpx
 import typer
 
+from hawkfish_controller.services.backup import backup_service
+
 app = typer.Typer(add_completion=False, help="HawkFish CLI")
 
 
@@ -497,6 +499,62 @@ def netprofile_rm(profile_id: str):
             typer.echo(f"Error: {r.status_code} {r.text}", err=True)
             raise typer.Exit(code=1)
         typer.echo("Network profile removed")
+
+
+@app.group()
+def admin():
+    """Administrative operations."""
+    pass
+
+
+@admin.command("backup")
+def admin_backup(
+    output: str = typer.Argument(..., help="Output backup file path"),
+):
+    """Create a backup of HawkFish state."""
+    try:
+        result = backup_service.create_backup(output)
+        typer.echo(f"✓ Backup created: {result['backup_path']}")
+        typer.echo(f"  Size: {result['size_bytes']:,} bytes")
+        typer.echo(f"  Components: {', '.join(result['components'])}")
+    except Exception as e:
+        typer.echo(f"❌ Backup failed: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@admin.command("restore")
+def admin_restore(
+    backup_path: str = typer.Argument(..., help="Backup file path"),
+    force: bool = typer.Option(False, "--force", help="Skip safety checks"),
+):
+    """Restore HawkFish state from backup."""
+    try:
+        result = backup_service.restore_backup(backup_path, force=force)
+        typer.echo(f"✓ Backup restored from: {result['backup_path']}")
+        typer.echo(f"  Backup version: {result.get('backup_version', 'unknown')}")
+        typer.echo(f"  Components: {', '.join(result.get('components_restored', []))}")
+        typer.echo("\n⚠️  Restart HawkFish controller to use restored state.")
+    except Exception as e:
+        typer.echo(f"❌ Restore failed: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@admin.command("list-databases")
+def admin_list_databases():
+    """List available database files."""
+    try:
+        databases = backup_service.list_databases()
+        if not databases:
+            typer.echo("No database files found.")
+            return
+        
+        typer.echo("Available database files:")
+        for db in databases:
+            size_mb = db['size_bytes'] / (1024 * 1024)
+            typer.echo(f"  {db['name']}: {size_mb:.1f} MB (modified: {db['modified_at']})")
+    except Exception as e:
+        typer.echo(f"❌ Error: {e}", err=True)
+        raise typer.Exit(1)
 
 
 def main() -> None:
