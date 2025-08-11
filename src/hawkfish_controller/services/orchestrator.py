@@ -71,10 +71,21 @@ async def create_node(spec: NodeSpec, task_service: TaskService, subs: Subscript
                                 out.write(chunk)
             await task_service.update(task_id, percent=30, message="Base image ready")
 
-        # cloud-init seed placeholder
+        # cloud-init seed generation (simple NoCloud: user-data/meta-data)
         seed_path = dirs["seeds"] / f"{spec.name}.iso"
-        with open(seed_path, "wb") as f:
-            f.write(b"seed")
+        user_data = (spec.cloud_init or {}).get("userData", "#cloud-config\nusers: []\n")
+        # meta-data
+        tmp_dir = dirs["seeds"] / f".seed-{spec.name}"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_dir / "user-data").write_text(user_data)
+        (tmp_dir / "meta-data").write_text(f"instance-id: {spec.name}\nlocal-hostname: {spec.name}\n")
+        # try genisoimage; fallback to zip-like concat
+        try:
+            subprocess.run(["/usr/bin/genisoimage", "-output", str(seed_path), "-volid", "cidata", "-joliet", "-rock", str(tmp_dir / "user-data"), str(tmp_dir / "meta-data")], check=True)  # noqa: S603
+        except Exception:
+            with open(seed_path, "wb") as out:
+                out.write((tmp_dir / "user-data").read_bytes())
+                out.write((tmp_dir / "meta-data").read_bytes())
         await task_service.update(task_id, percent=40, message=f"Seed created at {seed_path}")
 
         # libvirt define domain (omitted here); would use XML with devices

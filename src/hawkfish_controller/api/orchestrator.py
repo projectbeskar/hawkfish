@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from ..config import settings
 from ..services.events import SubscriptionStore
 from ..services.orchestrator import NodeSpec, create_node, delete_node
+from ..services.security import require_role
 from ..services.tasks import TaskService
+from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Systems", tags=["Orchestrator"])
 
@@ -19,7 +21,9 @@ def get_subs() -> SubscriptionStore:
 
 
 @router.post("")
-async def create_system(body: dict, task_service: TaskService = Depends(get_task_service)):
+async def create_system(body: dict, task_service: TaskService = Depends(get_task_service), session=Depends(require_session)):
+    if not require_role("admin", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
     name = body.get("Name")
     if not name:
         raise HTTPException(status_code=400, detail="Name required")
@@ -39,7 +43,9 @@ async def create_system(body: dict, task_service: TaskService = Depends(get_task
 
 
 @router.delete("/{system_id}")
-async def delete_system(system_id: str, delete_storage: bool = False, task_service: TaskService = Depends(get_task_service)):
+async def delete_system(system_id: str, delete_storage: bool = False, task_service: TaskService = Depends(get_task_service), session=Depends(require_session)):
+    if not require_role("admin", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
     task_id = await delete_node(system_id, delete_storage, task_service, get_subs())
     location = f"/redfish/v1/TaskService/Tasks/{task_id}"
     return Response(status_code=202, headers={"Location": location})
