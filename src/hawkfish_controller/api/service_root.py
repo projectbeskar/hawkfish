@@ -12,16 +12,25 @@ def get_service_root():
         "@odata.id": "/redfish/v1/",
         "Id": "RootService",
         "Name": "HawkFish Redfish Service",
-        "Links": {
-            "Systems": {"@odata.id": "/redfish/v1/Systems"},
-            "Managers": {"@odata.id": "/redfish/v1/Managers"},
-            "Chassis": {"@odata.id": "/redfish/v1/Chassis"},
-        },
         "RedfishVersion": "1.18.0",
+        "Systems": {"@odata.id": "/redfish/v1/Systems"},
+        "Managers": {"@odata.id": "/redfish/v1/Managers"},
+        "Chassis": {"@odata.id": "/redfish/v1/Chassis"},
         "SessionService": {"@odata.id": "/redfish/v1/SessionService"},
         "TaskService": {"@odata.id": "/redfish/v1/TaskService"},
         "EventService": {"@odata.id": "/redfish/v1/EventService"},
-        "Managers": {"@odata.id": "/redfish/v1/Managers"},
+        "UpdateService": {"@odata.id": "/redfish/v1/UpdateService"},
+        "Links": {
+            "Sessions": {"@odata.id": "/redfish/v1/SessionService/Sessions"}
+        },
+        "Oem": {
+            "HawkFish": {
+                "Profiles": {"@odata.id": "/redfish/v1/Oem/HawkFish/Profiles"},
+                "Hosts": {"@odata.id": "/redfish/v1/Oem/HawkFish/Hosts"},
+                "Images": {"@odata.id": "/redfish/v1/Oem/HawkFish/Images"},
+                "NetworkProfiles": {"@odata.id": "/redfish/v1/Oem/HawkFish/NetworkProfiles"}
+            }
+        }
     }
 
 

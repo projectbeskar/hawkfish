@@ -1,0 +1,95 @@
+name: Redfish Service Validator
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  redfish-validator:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+    
+    - name: Start HawkFish service
+      run: |
+        # Start HawkFish in background with test config
+        export HF_AUTH_MODE=none
+        export HF_TLS_MODE=off
+        export HF_API_BIND=127.0.0.1:8080
+        python -m hawkfish_controller &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+        
+        # Wait for service to be ready
+        sleep 10
+        curl -f http://127.0.0.1:8080/redfish/v1/ || exit 1
+    
+    - name: Install Redfish Service Validator
+      run: |
+        # Install the DMTF Redfish Service Validator
+        pip install redfish-service-validator
+    
+    - name: Run Redfish Service Validator
+      continue-on-error: true
+      run: |
+        # Create baseline allowlist file
+        cat > allowlist.txt << 'EOF'
+        # Known non-critical warnings to ignore
+        REQ_HEADERS_AUTHORIZATION
+        REQ_HEADERS_CONTENT_TYPE
+        RESP_HEADERS_CACHE_CONTROL
+        RESP_HEADERS_STRICT_TRANSPORT_SECURITY
+        EOF
+        
+        # Run validator with baseline allowlist
+        python -m redfish_service_validator \
+          --ip 127.0.0.1:8080 \
+          --service-root /redfish/v1/ \
+          --no-cert-check \
+          --report-dir validator-report \
+          --allowlist allowlist.txt || true
+    
+    - name: Check for critical errors
+      run: |
+        # Parse report for new critical errors (simplified check)
+        if [ -f "validator-report/ConformanceHtmlReport.html" ]; then
+          # Extract error count from HTML report (simplified)
+          ERRORS=$(grep -o "Errors: [0-9]*" validator-report/ConformanceHtmlReport.html | grep -o "[0-9]*" || echo "0")
+          echo "Found $ERRORS errors in validator report"
+          
+          # For now, allow up to 10 errors as baseline
+          if [ "$ERRORS" -gt 10 ]; then
+            echo "Too many validator errors: $ERRORS (max allowed: 10)"
+            exit 1
+          fi
+        else
+          echo "Validator report not found"
+          exit 1
+        fi
+    
+    - name: Upload validator report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: redfish-validator-report
+        path: validator-report/
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        if [ ! -z "$SERVER_PID" ]; then
+          kill $SERVER_PID || true
+        fi

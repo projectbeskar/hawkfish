@@ -10,6 +10,8 @@ def test_service_root_ok():
     assert resp.status_code == 200
     body = resp.json()
     assert body["Id"] == "RootService"
-    assert body["Links"]["Systems"]["@odata.id"] == "/redfish/v1/Systems"
+    assert body["Systems"]["@odata.id"] == "/redfish/v1/Systems"
+    assert body["UpdateService"]["@odata.id"] == "/redfish/v1/UpdateService"
+    assert "HawkFish" in body["Oem"]
 
 

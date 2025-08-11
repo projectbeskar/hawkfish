@@ -11,9 +11,36 @@ router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Profiles", tags=["Profiles"]
 
 
 @router.get("")
-async def profiles_list(session=Depends(require_session)):
+async def profiles_list(page: int = 1, per_page: int = 50, session=Depends(require_session)):
+    """List profiles with pagination."""
     profiles = await list_profiles()
-    return {"Members": [{"Id": p.id} for p in profiles]}
+    
+    # Apply pagination
+    total_count = len(profiles)
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    paginated_profiles = profiles[start_idx:end_idx]
+    
+    # Build pagination links
+    base_url = "/redfish/v1/Oem/HawkFish/Profiles"
+    pagination = {}
+    
+    if page > 1:
+        pagination["@odata.prevLink"] = f"{base_url}?page={page-1}&per_page={per_page}"
+    
+    if end_idx < total_count:
+        pagination["@odata.nextLink"] = f"{base_url}?page={page+1}&per_page={per_page}"
+    
+    result = {
+        "@odata.type": "#Collection.Collection",
+        "@odata.id": base_url,
+        "Name": "Profiles Collection",
+        "Members@odata.count": len(paginated_profiles),
+        "Members": [{"@odata.id": f"{base_url}/{p.id}", "Id": p.id} for p in paginated_profiles]
+    }
+    result.update(pagination)
+    
+    return result
 
 
 @router.get("/{profile_id}")

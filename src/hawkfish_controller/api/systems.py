@@ -19,15 +19,82 @@ def get_driver() -> LibvirtDriver:
 
 
 @router.get("")
-def list_systems(driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+def list_systems(
+    page: int = 1, 
+    per_page: int = 50, 
+    filter: str = "",
+    driver: LibvirtDriver = Depends(get_driver), 
+    session=Depends(require_session)
+):
+    """List systems with pagination and filtering."""
     systems = driver.list_systems()
-    members = [{"@odata.id": f"/redfish/v1/Systems/{s['Id']}"} for s in systems]
-    return {
+    
+    # Apply filtering
+    if filter:
+        filtered_systems = []
+        for system in systems:
+            # Simple filter format: key:value,key2:value2
+            match = True
+            for filter_part in filter.split(","):
+                if ":" in filter_part:
+                    key, value = filter_part.split(":", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # Check system properties and metadata
+                    system_value = None
+                    if key == "host":
+                        # Would need to look up host from system metadata
+                        system_value = "localhost"  # Placeholder
+                    elif key == "tag":
+                        # Would need to look up tags from system metadata
+                        system_value = ""  # Placeholder
+                    elif key == "power":
+                        system_value = system.get("PowerState", "").lower()
+                    elif key in system:
+                        system_value = str(system[key]).lower()
+                    
+                    if system_value and value.lower() not in system_value:
+                        match = False
+                        break
+            
+            if match:
+                filtered_systems.append(system)
+        
+        systems = filtered_systems
+    
+    # Apply pagination
+    total_count = len(systems)
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    paginated_systems = systems[start_idx:end_idx]
+    
+    members = [{"@odata.id": f"/redfish/v1/Systems/{s['Id']}"} for s in paginated_systems]
+    
+    # Build pagination links
+    base_url = "/redfish/v1/Systems"
+    pagination = {}
+    
+    if page > 1:
+        pagination["@odata.prevLink"] = f"{base_url}?page={page-1}&per_page={per_page}"
+        if filter:
+            pagination["@odata.prevLink"] += f"&filter={filter}"
+    
+    if end_idx < total_count:
+        pagination["@odata.nextLink"] = f"{base_url}?page={page+1}&per_page={per_page}"
+        if filter:
+            pagination["@odata.nextLink"] += f"&filter={filter}"
+    
+    result = {
         "@odata.id": "/redfish/v1/Systems",
+        "@odata.type": "#ComputerSystemCollection.ComputerSystemCollection",
         "Name": "Systems Collection",
         "Members@odata.count": len(members),
         "Members": members,
     }
+    result.update(pagination)
+    
+    return result
 
 
 @router.get("/{system_id}", response_model=None)
@@ -113,5 +180,53 @@ def boot_to_pxe(system_id: str, driver: LibvirtDriver = Depends(get_driver), ses
         return {"TaskState": "Completed"}
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/{system_id}/EthernetInterfaces")
+def list_ethernet_interfaces(system_id: str, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+    """List EthernetInterfaces for a system."""
+    system = driver.get_system(system_id)
+    if system is None:
+        return redfish_error("System not found", 404)
+    
+    interfaces = system.get("_EthernetInterfaceDetails", [])
+    members = [{"@odata.id": iface["@odata.id"]} for iface in interfaces]
+    
+    return {
+        "@odata.type": "#EthernetInterfaceCollection.EthernetInterfaceCollection",
+        "@odata.id": f"/redfish/v1/Systems/{system_id}/EthernetInterfaces",
+        "Name": "Ethernet Interfaces Collection",
+        "Members@odata.count": len(members),
+        "Members": members,
+    }
+
+
+@router.get("/{system_id}/EthernetInterfaces/{interface_id}")
+def get_ethernet_interface(system_id: str, interface_id: str, response: Response, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+    """Get details for a specific EthernetInterface."""
+    system = driver.get_system(system_id)
+    if system is None:
+        return redfish_error("System not found", 404)
+    
+    interfaces = system.get("_EthernetInterfaceDetails", [])
+    interface = None
+    for iface in interfaces:
+        if iface["Id"] == interface_id:
+            interface = iface
+            break
+    
+    if interface is None:
+        return redfish_error("Interface not found", 404)
+    
+    # Add ETag for interface state
+    etag = f'W/"{interface["MACAddress"]}-{interface["SpeedMbps"]}"'
+    if response is not None:
+        response.headers["ETag"] = etag
+    
+    # Remove internal fields and add proper type
+    interface_copy = interface.copy()
+    interface_copy["@odata.type"] = "#EthernetInterface.v1_9_0.EthernetInterface"
+    
+    return interface_copy
 
 

@@ -114,11 +114,11 @@ class LibvirtDriver:
         name = dom.name()
         power_state = self._power_state(dom)
         vcpu_count, mem_gib = self._resources(dom)
-        nic_count = self._nic_count(dom)
         nics = self._nic_details(dom)
         disk_gib = self._disk_summary(dom)
         boot = self._boot_info(dom)
         return {
+            "@odata.type": "#ComputerSystem.v1_19_0.ComputerSystem",
             "@odata.id": f"/redfish/v1/Systems/{name}",
             "Id": name,
             "Name": name,
@@ -126,7 +126,9 @@ class LibvirtDriver:
             "Boot": boot,
             "ProcessorSummary": {"Count": vcpu_count, "Model": None},
             "MemorySummary": {"TotalSystemMemoryGiB": mem_gib},
-            "EthernetInterfaces": {"Count": nic_count, "Interfaces": nics},
+            "EthernetInterfaces": {
+                "@odata.id": f"/redfish/v1/Systems/{name}/EthernetInterfaces"
+            },
             "Storage": {"TotalGiB": disk_gib},
             "Actions": {
                 "#ComputerSystem.Reset": {
@@ -134,6 +136,12 @@ class LibvirtDriver:
                     "@Redfish.ActionInfo": None,
                 }
             },
+            "Links": {
+                "Chassis": [{"@odata.id": "/redfish/v1/Chassis/1"}],
+                "ManagedBy": [{"@odata.id": "/redfish/v1/Managers/HawkFish"}]
+            },
+            # Store interface details for sub-collection
+            "_EthernetInterfaceDetails": nics,
         }
 
     def _power_state(self, dom) -> str:  # type: ignore[no-untyped-def]
@@ -173,20 +181,56 @@ class LibvirtDriver:
         return 0.0
 
     def _nic_details(self, dom) -> list[dict[str, Any]]:  # type: ignore[no-untyped-def]
+        """Enhanced NIC details with Redfish-compliant structure."""
         try:
             xml = dom.XMLDesc(0)
+            system_name = dom.name()
         except Exception:
             return []
         results: list[dict[str, Any]] = []
         # very simple regex parsing; a proper XML parser can replace this later
-        for m in re.finditer(r"<interface[^>]*?type='(\w+)'[\s\S]*?<mac address='([^']+)'/>([\s\S]*?)</interface>", xml):
-            _itype, mac, iface_block = m.groups()
+        for iface_idx, m in enumerate(re.finditer(r"<interface[^>]*?type='(\w+)'[\s\S]*?<mac address='([^']+)'/>([\s\S]*?)</interface>", xml)):
+            itype, mac, iface_block = m.groups()
             # network name or source dev
             net_match = re.search(r"<source\s+network='([^']+)'", iface_block)
             if not net_match:
                 net_match = re.search(r"<source\s+bridge='([^']+)'", iface_block)
-            network = net_match.group(1) if net_match else None
-            results.append({"MACAddress": mac, "Network": network})
+            
+            # Try to detect model for speed estimation
+            model_match = re.search(r"<model\s+type='([^']+)'", iface_block)
+            model = model_match.group(1) if model_match else "virtio"
+            
+            # Speed estimation based on model (virtio = 1Gbps, e1000 = 100Mbps)
+            speed_mbps = 1000 if model in ["virtio", "virtio-net"] else 100
+            
+            # Get IP addresses via guest agent if available
+            ipv4_addresses = []
+            ipv6_addresses = []
+            # This would require QGA integration - placeholder for now
+            
+            nic_id = f"eth{iface_idx}"
+            results.append({
+                "@odata.id": f"/redfish/v1/Systems/{system_name}/EthernetInterfaces/{nic_id}",
+                "Id": nic_id,
+                "Name": f"Ethernet Interface {iface_idx}",
+                "MACAddress": mac,
+                "SpeedMbps": speed_mbps,
+                "LinkStatus": "LinkUp",  # Assume up if defined
+                "Status": {
+                    "State": "Enabled",
+                    "Health": "OK"
+                },
+                "InterfaceEnabled": True,
+                "DHCPv4": {"DHCPEnabled": True},  # Default assumption
+                "DHCPv6": {"OperatingMode": "Stateful"},
+                "IPv4Addresses": ipv4_addresses,
+                "IPv6Addresses": ipv6_addresses,
+                "VLAN": None,  # Would need to parse VLAN tags
+                "VLANs": {"@odata.id": f"/redfish/v1/Systems/{system_name}/EthernetInterfaces/{nic_id}/VLANs"},
+                "Links": {
+                    "Chassis": {"@odata.id": "/redfish/v1/Chassis/1"}
+                }
+            })
         return results
 
     def _boot_info(self, dom) -> dict[str, Any]:  # type: ignore[no-untyped-def]
@@ -288,5 +332,83 @@ class LibvirtDriver:
             dom.attachDeviceFlags(disk_xml, 0)
         except Exception as exc:  # pragma: no cover - requires real libvirt
             raise LibvirtError(f"Failed to detach ISO: {exc}") from exc
+
+    # --- snapshot operations ---
+    def create_snapshot(self, system_id: str, snapshot_name: str, description: str | None = None) -> None:
+        """Create a VM snapshot."""
+        conn = self._connect()
+        if conn is None:
+            raise LibvirtError("Libvirt not available", status_code=503)
+        
+        try:
+            dom = conn.lookupByName(system_id)
+        except Exception as exc:
+            raise LibvirtError("System not found", status_code=404) from exc
+        
+        # Create snapshot XML
+        snapshot_xml = f"""
+        <domainsnapshot>
+            <name>{snapshot_name}</name>
+            <description>{description or 'HawkFish snapshot'}</description>
+            <memory snapshot='external'/>
+            <disks>
+                <disk name='vda' snapshot='external'/>
+            </disks>
+        </domainsnapshot>
+        """
+        
+        try:
+            dom.snapshotCreateXML(snapshot_xml.strip(), 0)
+        except Exception as exc:
+            raise LibvirtError(f"Failed to create snapshot: {exc}") from exc
+
+    def list_libvirt_snapshots(self, system_id: str) -> list[dict[str, Any]]:
+        """List snapshots for a system from libvirt."""
+        conn = self._connect()
+        if conn is None:
+            return []
+        
+        try:
+            dom = conn.lookupByName(system_id)
+            snapshot_names = dom.listAllSnapshots(0)
+            snapshots = []
+            
+            for snap in snapshot_names:
+                name = snap.getName()
+                snapshots.append({
+                    "Name": name,
+                    "CreationTime": "unknown",  # Would parse from XML
+                    "State": "Ready"
+                })
+            
+            return snapshots
+        except Exception:
+            return []
+
+    def revert_snapshot(self, system_id: str, snapshot_name: str) -> None:
+        """Revert system to a snapshot."""
+        conn = self._connect()
+        if conn is None:
+            raise LibvirtError("Libvirt not available", status_code=503)
+        
+        try:
+            dom = conn.lookupByName(system_id)
+            snap = dom.snapshotLookupByName(snapshot_name, 0)
+            dom.revertToSnapshot(snap, 0)
+        except Exception as exc:
+            raise LibvirtError(f"Failed to revert snapshot: {exc}") from exc
+
+    def delete_libvirt_snapshot(self, system_id: str, snapshot_name: str) -> None:
+        """Delete a snapshot."""
+        conn = self._connect()
+        if conn is None:
+            raise LibvirtError("Libvirt not available", status_code=503)
+        
+        try:
+            dom = conn.lookupByName(system_id)
+            snap = dom.snapshotLookupByName(snapshot_name, 0)
+            snap.delete(0)
+        except Exception as exc:
+            raise LibvirtError(f"Failed to delete snapshot: {exc}") from exc
 
 
