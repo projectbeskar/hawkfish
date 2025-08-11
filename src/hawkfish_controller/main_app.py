@@ -13,10 +13,13 @@ from .api.orchestrator import router as orchestrator_router
 from .api.profiles import router as profiles_router
 from .api.service_root import router as service_root_router
 from .api.sessions import router as sessions_router
+from .api.snapshots import router as snapshots_router
 from .api.systems import router as systems_router
 from .api.task_event import router as task_event_router
+from .api.update_service import router as update_service_router
 from .config import ensure_directories, settings
 from .middleware import MetricsLoggingMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
 
 
 def create_app() -> FastAPI:
@@ -43,6 +46,8 @@ def create_app() -> FastAPI:
             {"name": "Hosts", "description": "Host pool management"},
             {"name": "Images", "description": "Image catalog"},
             {"name": "NetworkProfiles", "description": "Network profile templates"},
+            {"name": "UpdateService", "description": "Software inventory and updates"},
+            {"name": "Snapshots", "description": "VM snapshots and backups"},
         ],
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
@@ -51,6 +56,7 @@ def create_app() -> FastAPI:
     ensure_directories()
     structlog.configure(processors=[structlog.processors.JSONRenderer()])
     app.add_middleware(MetricsLoggingMiddleware)
+    app.add_middleware(RateLimitMiddleware, enabled=settings.auth_mode != "none")  # Disable in dev mode
 
     app.include_router(service_root_router)
     app.include_router(systems_router)
@@ -66,6 +72,8 @@ def create_app() -> FastAPI:
     app.include_router(hosts_router)
     app.include_router(images_router)
     app.include_router(netprofiles_router)
+    app.include_router(update_service_router)
+    app.include_router(snapshots_router)
 
     return app
 

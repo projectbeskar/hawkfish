@@ -416,6 +416,57 @@ def netprofiles():
         typer.echo(json.dumps(r.json(), indent=2))
 
 
+# Snapshots
+@app.command()
+def snaps_ls(system_id: str):
+    """List snapshots for a system."""
+    with httpx.Client() as client:
+        r = client.get(f"{api_base()}/Systems/{system_id}/Oem/HawkFish/Snapshots", headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json(), indent=2))
+
+
+@app.command()
+def snaps_create(system_id: str, name: str = "", description: str = ""):
+    """Create a snapshot."""
+    body = {}
+    if name:
+        body["Name"] = name
+    if description:
+        body["Description"] = description
+    
+    with httpx.Client() as client:
+        r = client.post(f"{api_base()}/Systems/{system_id}/Oem/HawkFish/Snapshots", json=body, headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json()))
+
+
+@app.command()
+def snaps_revert(system_id: str, snapshot_id: str):
+    """Revert to a snapshot."""
+    with httpx.Client() as client:
+        r = client.post(f"{api_base()}/Systems/{system_id}/Oem/HawkFish/Snapshots/{snapshot_id}/Actions/Oem.HawkFish.Snapshot.Revert", json={}, headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(json.dumps(r.json()))
+
+
+@app.command()
+def snaps_rm(system_id: str, snapshot_id: str):
+    """Delete a snapshot."""
+    with httpx.Client() as client:
+        r = client.delete(f"{api_base()}/Systems/{system_id}/Oem/HawkFish/Snapshots/{snapshot_id}", headers=auth_headers())
+        if r.status_code >= 400:
+            typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo("Snapshot deletion started")
+
+
 @app.command()
 def netprofile_create(name: str, libvirt_network: str = "", bridge: str = "", vlan: int = 0, mac_policy: str = "auto", count: int = 1):
     body = {
