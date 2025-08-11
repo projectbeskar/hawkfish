@@ -70,17 +70,29 @@ def get_subs() -> SubscriptionStore:
 @router.get("/redfish/v1/EventService/Subscriptions")
 async def list_subscriptions():
     subs = await get_subs().list()
-    return {"Members": [{"Id": s["Id"], "Destination": s["Destination"], "EventTypes": s["EventTypes"]} for s in subs]}
+    return {
+        "Members": [
+            {
+                "Id": s["Id"],
+                "Destination": s["Destination"],
+                "EventTypes": s["EventTypes"],
+                "SystemIds": s.get("SystemIds", []),
+            }
+            for s in subs
+        ]
+    }
 
 
 @router.post("/redfish/v1/EventService/Subscriptions")
 async def create_subscription(body: dict):
     dest = body.get("Destination")
     evts = body.get("EventTypes") or []
+    system_ids = body.get("SystemIds") or []
+    secret = body.get("Secret")
     if not dest:
         return Response(status_code=400)
-    sub_id = await get_subs().add(dest, list(map(str, evts)))
-    return {"Id": sub_id, "Destination": dest, "EventTypes": evts}
+    sub_id = await get_subs().add(dest, list(map(str, evts)), list(map(str, system_ids)), str(secret) if secret else None)
+    return {"Id": sub_id, "Destination": dest, "EventTypes": evts, "SystemIds": system_ids}
 
 
 @router.get("/events/stream")

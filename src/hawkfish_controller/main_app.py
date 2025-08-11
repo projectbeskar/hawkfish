@@ -1,9 +1,13 @@
 import structlog
 from fastapi import FastAPI
 
+from .api.batch import router as batch_router
 from .api.chassis import router as chassis_router
+from .api.import_adopt import router as import_router
+from .api.ipxe import router as ipxe_router
 from .api.managers import router as managers_router
 from .api.orchestrator import router as orchestrator_router
+from .api.profiles import router as profiles_router
 from .api.service_root import router as service_root_router
 from .api.sessions import router as sessions_router
 from .api.systems import router as systems_router
@@ -29,6 +33,10 @@ def create_app() -> FastAPI:
             {"name": "Tasks", "description": "TaskService"},
             {"name": "Events", "description": "EventService"},
             {"name": "Orchestrator", "description": "Node lifecycle"},
+            {"name": "Profiles", "description": "Reusable node specs"},
+            {"name": "Batches", "description": "Batch provisioning"},
+            {"name": "PXE", "description": "iPXE helper"},
+            {"name": "Import", "description": "Import/adopt domains"},
         ],
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
@@ -45,6 +53,10 @@ def create_app() -> FastAPI:
     app.include_router(chassis_router)
     app.include_router(task_event_router)
     app.include_router(orchestrator_router)
+    app.include_router(profiles_router)
+    app.include_router(batch_router)
+    app.include_router(ipxe_router)
+    app.include_router(import_router)
 
     return app
 

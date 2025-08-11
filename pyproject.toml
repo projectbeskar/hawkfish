@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hawkfish"
-version = "0.1.0"
+version = "0.4.0"
 description = "HawkFish: Redfish controller for KVM/libvirt"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,6 +30,8 @@ dependencies = [
   "argon2-cffi>=23.1.0",
   "prometheus-client>=0.20.0",
   "cryptography>=42.0.0",
+  "jsonschema>=4.23.0",
+  "types-jsonschema>=4.23.0.20240712",
 ]
 
 [project.optional-dependencies]

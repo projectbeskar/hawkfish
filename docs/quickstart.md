@@ -33,6 +33,13 @@ python -m hawkfish_cli media-insert node01 --image /var/lib/hawkfish/isos/some.i
 python -m hawkfish_cli tasks
 python -m hawkfish_cli task-watch <taskId>
 python -m hawkfish_cli events-sse
+# Profiles & Batch
+python -m hawkfish_cli profiles
+python -m hawkfish_cli profile-create small-linux --cpu 2 --memory 2048 --disk 20 --network default --boot-primary hdd
+python -m hawkfish_cli batch-create small-linux --count 3 --name-prefix node --start-index 1 --zero-pad 2
+# Import & Subscriptions
+python -m hawkfish_cli import-scan
+python -m hawkfish_cli subs-create https://localhost:9000/webhook --event-types PowerStateChanged,MediaInserted --system-ids node01 --secret mysecret
 ```
 
 Enable libvirt on Ubuntu (optional):

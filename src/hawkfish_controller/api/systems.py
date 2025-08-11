@@ -104,3 +104,14 @@ def set_boot_override(system_id: str, body: dict[str, Any], driver: LibvirtDrive
     return {"TaskState": "Completed"}
 
 
+@router.post("/{system_id}/Actions/Oem.HawkFish.BootToPXE")
+def boot_to_pxe(system_id: str, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+    if not require_role("operator", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        driver.set_boot_override(system_id, target="pxe", persist=False)
+        return {"TaskState": "Completed"}
+    except LibvirtError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
