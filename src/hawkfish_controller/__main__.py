@@ -14,8 +14,9 @@ def main() -> None:
 
     app = create_app()
     if settings.dev_tls in ("self-signed", "custom"):
-        from .services.tls import ensure_self_signed
         import os
+
+        from .services.tls import ensure_self_signed
         cert = settings.tls_cert_path or os.path.join(settings.state_dir, "tls", "cert.pem")
         key = settings.tls_key_path or os.path.join(settings.state_dir, "tls", "key.pem")
         if settings.dev_tls == "self-signed":

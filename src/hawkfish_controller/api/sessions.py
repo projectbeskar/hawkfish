@@ -1,3 +1,4 @@
+import os
 import time
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -42,7 +43,8 @@ async def create_session(body: dict):
 def require_session(x_auth_token: str | None = Header(default=None, alias="X-Auth-Token")) -> Session:
     if settings.auth_mode == "none":
         # return a permissive session for local/test mode
-        return Session(token="dev", username="local", role="admin", created_at=0.0, expires_at=1e12, last_activity=time.time())  # type: ignore[name-defined]
+        dev_token = os.environ.get("HF_DEV_TOKEN", "dev")
+        return Session(token=dev_token, username="local", role="admin", created_at=0.0, expires_at=1e12, last_activity=time.time())  # type: ignore[name-defined]
     if not x_auth_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-Auth-Token")
     session = global_session_store.get(x_auth_token)

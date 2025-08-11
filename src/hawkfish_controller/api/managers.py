@@ -12,11 +12,10 @@ from fastapi.responses import JSONResponse
 from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
-from ..services.metrics import MEDIA_ACTIONS, BYTES_DOWNLOADED
+from ..services.metrics import BYTES_DOWNLOADED, MEDIA_ACTIONS
 from ..services.security import require_role
-from ..services.tasks import TaskService
-from .task_event import get_task_service
 from .sessions import require_session
+from .task_event import get_task_service
 
 router = APIRouter(prefix="/redfish/v1/Managers", tags=["Managers"])
 

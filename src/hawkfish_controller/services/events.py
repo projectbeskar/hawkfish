@@ -64,6 +64,14 @@ class SubscriptionStore:
                     );
                     """
                 )
+                # Migrate to add optional filter/secret columns if missing
+                from contextlib import suppress
+
+                with suppress(Exception):
+                    await db.execute("ALTER TABLE hf_subscriptions ADD COLUMN system_ids TEXT")
+                with suppress(Exception):
+                    await db.execute("ALTER TABLE hf_subscriptions ADD COLUMN secret TEXT")
+
                 await db.execute(
                     """
                     CREATE TABLE IF NOT EXISTS hf_deadletters (
@@ -80,15 +88,21 @@ class SubscriptionStore:
             finally:
                 await db.close()
 
-    async def add(self, destination: str, event_types: list[str]) -> str:
+    async def add(self, destination: str, event_types: list[str], system_ids: list[str] | None = None, secret: str | None = None) -> str:
         await self.init()
         sub_id = uuid.uuid4().hex
         created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         db = await aiosqlite.connect(self.db_path)
         try:
+            from contextlib import suppress
+
+            with suppress(Exception):
+                await db.execute("ALTER TABLE hf_subscriptions ADD COLUMN system_ids TEXT")
+            with suppress(Exception):
+                await db.execute("ALTER TABLE hf_subscriptions ADD COLUMN secret TEXT")
             await db.execute(
-                "INSERT INTO hf_subscriptions (id, destination, event_types, created_at) VALUES (?, ?, ?, ?)",
-                (sub_id, destination, json.dumps(event_types), created_at),
+                "INSERT INTO hf_subscriptions (id, destination, event_types, created_at, system_ids, secret) VALUES (?, ?, ?, ?, ?, ?)",
+                (sub_id, destination, json.dumps(event_types), created_at, json.dumps(system_ids or []), secret or ""),
             )
             await db.commit()
         finally:
@@ -99,22 +113,43 @@ class SubscriptionStore:
         await self.init()
         db = await aiosqlite.connect(self.db_path)
         try:
-            cur = await db.execute(
-                "SELECT id, destination, event_types, created_at FROM hf_subscriptions ORDER BY created_at DESC"
-            )
-            rows = await cur.fetchall()
-            await cur.close()
+            try:
+                cur = await db.execute(
+                    "SELECT id, destination, event_types, created_at, system_ids, secret FROM hf_subscriptions ORDER BY created_at DESC"
+                )
+                rows = await cur.fetchall()
+                await cur.close()
+                return [
+                    {
+                        "Id": r[0],
+                        "Destination": r[1],
+                        "EventTypes": json.loads(r[2] or "[]"),
+                        "CreatedAt": r[3],
+                        "SystemIds": json.loads(r[4] or "[]"),
+                        "Secret": r[5] or "",
+                    }
+                    for r in rows
+                ]
+            except Exception:
+                # Fallback for older DBs without new columns
+                cur = await db.execute(
+                    "SELECT id, destination, event_types, created_at FROM hf_subscriptions ORDER BY created_at DESC"
+                )
+                rows = await cur.fetchall()
+                await cur.close()
+                return [
+                    {
+                        "Id": r[0],
+                        "Destination": r[1],
+                        "EventTypes": json.loads(r[2] or "[]"),
+                        "CreatedAt": r[3],
+                        "SystemIds": [],
+                        "Secret": "",
+                    }
+                    for r in rows
+                ]
         finally:
             await db.close()
-        return [
-            {
-                "Id": r[0],
-                "Destination": r[1],
-                "EventTypes": json.loads(r[2] or "[]"),
-                "CreatedAt": r[3],
-            }
-            for r in rows
-        ]
 
     async def deliver(self, event: Event) -> None:
         # ensure db directory exists
@@ -128,12 +163,24 @@ class SubscriptionStore:
             return
         async with httpx.AsyncClient(timeout=5) as client:
             for s in subs:
-                if s.get("EventTypes") and event.type not in s["EventTypes"]:
+                event_types = s.get("EventTypes") or []
+                if event_types and event.type not in event_types:
+                    continue
+                system_ids = s.get("SystemIds") or []
+                system_id = event.payload.get("systemId") if isinstance(event.payload, dict) else None
+                if system_ids and system_id not in system_ids:
                     continue
                 payload = {"id": event.id, "type": event.type, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **event.payload}
+                headers = {}
+                secret = (s.get("Secret") or "").encode()
+                if secret:
+                    import hashlib
+                    import hmac
+                    sig = hmac.new(secret, json.dumps(payload, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+                    headers["X-HawkFish-Signature"] = f"sha256={sig}"
                 for attempt in range(5):
                     try:
-                        resp = await client.post(s["Destination"], json=payload)
+                        resp = await client.post(s["Destination"], json=payload, headers=headers)
                         if resp.status_code < 500:
                             break
                     except Exception as exc:  # pragma: no cover - network
@@ -165,7 +212,7 @@ global_event_bus = EventBus()
 
 async def publish_event(event_type: str, payload: dict[str, Any], subscriptions: SubscriptionStore) -> None:
     event = await global_event_bus.publish(event_type, payload)
-    # fire-and-forget delivery
-    asyncio.create_task(subscriptions.deliver(event))
+    # deliver synchronously to ensure deterministic behavior in tests
+    await subscriptions.deliver(event)
 
 
