@@ -40,6 +40,13 @@ python -m hawkfish_cli batch-create small-linux --count 3 --name-prefix node --s
 # Import & Subscriptions
 python -m hawkfish_cli import-scan
 python -m hawkfish_cli subs-create https://localhost:9000/webhook --event-types PowerStateChanged,MediaInserted --system-ids node01 --secret mysecret
+# Host Pools, Images & Network Profiles
+python -m hawkfish_cli hosts
+python -m hawkfish_cli host-add qemu+ssh://user@host/system "Remote Host" --labels env=prod,ssd=true
+python -m hawkfish_cli images
+python -m hawkfish_cli image-add ubuntu 22.04 --url https://example.com/ubuntu.img --sha256 abc123...
+python -m hawkfish_cli netprofiles
+python -m hawkfish_cli netprofile-create production --libvirt-network default --count 2
 ```
 
 Enable libvirt on Ubuntu (optional):
