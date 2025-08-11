@@ -27,10 +27,15 @@ class Settings(BaseSettings):
     # UI
     ui_enabled: bool = Field(default=False, alias="HF_UI_ENABLED")
     
-    # Libvirt Connection Pool
+        # Libvirt Connection Pool
     libvirt_pool_min: int = Field(default=1, alias="HF_LIBVIRT_POOL_MIN")
-    libvirt_pool_max: int = Field(default=10, alias="HF_LIBVIRT_POOL_MAX") 
+    libvirt_pool_max: int = Field(default=10, alias="HF_LIBVIRT_POOL_MAX")
     libvirt_pool_ttl_sec: int = Field(default=300, alias="HF_LIBVIRT_POOL_TTL_SEC")
+
+    # Console Access
+    console_enabled: bool = Field(default=True, alias="HF_CONSOLE_ENABLED")
+    console_token_ttl: int = Field(default=300, alias="HF_CONSOLE_TOKEN_TTL")  # 5 minutes
+    console_idle_timeout: int = Field(default=600, alias="HF_CONSOLE_IDLE_TIMEOUT")  # 10 minutes
 
     class Config:
         env_file = ".env"

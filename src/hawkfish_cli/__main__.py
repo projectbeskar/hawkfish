@@ -502,6 +502,230 @@ def netprofile_rm(profile_id: str):
 
 
 @app.group()
+def projects():
+    """Project management operations."""
+    pass
+
+
+@projects.command("ls")
+def projects_list():
+    """List projects."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.get(f"{base_url}/redfish/v1/Oem/HawkFish/Projects", headers=headers)
+            if r.status_code != 200:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+            
+            data = r.json()
+            projects = data.get("Members", [])
+            
+            if not projects:
+                typer.echo("No projects found")
+                return
+            
+            for project in projects:
+                usage = project.get("Usage", {})
+                quotas = project.get("Quotas", {})
+                
+                typer.echo(f"• {project['Id']}: {project['Name']}")
+                typer.echo(f"  Description: {project.get('Description', 'N/A')}")
+                
+                # Show resource usage
+                for resource, current in usage.items():
+                    quota = quotas.get(resource, 0)
+                    percentage = (current / quota * 100) if quota > 0 else 0
+                    typer.echo(f"  {resource}: {current}/{quota} ({percentage:.1f}%)")
+                
+                typer.echo()
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@projects.command("create")
+def projects_create(
+    name: str = typer.Argument(..., help="Project name"),
+    description: str = typer.Option("", "--description", "-d", help="Project description"),
+    vcpus: int = typer.Option(100, "--vcpus", help="vCPU quota"),
+    memory_gib: int = typer.Option(500, "--memory-gib", help="Memory quota in GiB"),
+    disk_gib: int = typer.Option(1000, "--disk-gib", help="Disk quota in GiB"),
+    systems: int = typer.Option(50, "--systems", help="System count quota"),
+):
+    """Create a new project."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    payload = {
+        "name": name,
+        "description": description,
+        "quotas": {
+            "vcpus": vcpus,
+            "memory_gib": memory_gib,
+            "disk_gib": disk_gib,
+            "systems": systems
+        }
+    }
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.post(f"{base_url}/redfish/v1/Oem/HawkFish/Projects", json=payload, headers=headers)
+            if r.status_code == 200:
+                project = r.json()
+                typer.echo(f"✓ Created project: {project['Id']} ({project['Name']})")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@projects.command("rm")
+def projects_remove(
+    project_id: str = typer.Argument(..., help="Project ID to remove"),
+):
+    """Remove a project."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.delete(f"{base_url}/redfish/v1/Oem/HawkFish/Projects/{project_id}", headers=headers)
+            if r.status_code == 200:
+                typer.echo(f"✓ Removed project: {project_id}")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@projects.command("members")
+def projects_members(
+    project_id: str = typer.Argument(..., help="Project ID"),
+):
+    """List project members."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.get(f"{base_url}/redfish/v1/Oem/HawkFish/Projects/{project_id}/Members", headers=headers)
+            if r.status_code != 200:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+            
+            data = r.json()
+            members = data.get("Members", [])
+            
+            if not members:
+                typer.echo("No members found")
+                return
+            
+            for member in members:
+                typer.echo(f"• {member['UserId']}: {member['Role']}")
+                typer.echo(f"  Assigned: {member['AssignedAt']} by {member.get('AssignedBy', 'N/A')}")
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@projects.command("add-member")
+def projects_add_member(
+    project_id: str = typer.Argument(..., help="Project ID"),
+    user_id: str = typer.Argument(..., help="User ID"),
+    role: str = typer.Option("viewer", "--role", "-r", help="User role (admin, operator, viewer)"),
+):
+    """Add a member to a project."""
+    if role not in ["admin", "operator", "viewer"]:
+        typer.echo("Error: Role must be admin, operator, or viewer", err=True)
+        raise typer.Exit(code=1)
+    
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    payload = {
+        "user_id": user_id,
+        "role": role
+    }
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.post(f"{base_url}/redfish/v1/Oem/HawkFish/Projects/{project_id}/Members", json=payload, headers=headers)
+            if r.status_code == 200:
+                typer.echo(f"✓ Added {user_id} to project {project_id} with role {role}")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@projects.command("remove-member")
+def projects_remove_member(
+    project_id: str = typer.Argument(..., help="Project ID"),
+    user_id: str = typer.Argument(..., help="User ID"),
+):
+    """Remove a member from a project."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.delete(f"{base_url}/redfish/v1/Oem/HawkFish/Projects/{project_id}/Members/{user_id}", headers=headers)
+            if r.status_code == 200:
+                typer.echo(f"✓ Removed {user_id} from project {project_id}")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.group()
 def admin():
     """Administrative operations."""
     pass
@@ -555,6 +779,86 @@ def admin_list_databases():
     except Exception as e:
         typer.echo(f"❌ Error: {e}", err=True)
         raise typer.Exit(1)
+
+
+@app.command("migrate")
+def migrate_system(
+    system_id: str = typer.Argument(..., help="System ID to migrate"),
+    target_host: str = typer.Option(..., "--to", help="Target host ID"),
+    live: bool = typer.Option(True, "--live/--offline", help="Use live migration"),
+):
+    """Migrate a system to another host."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    payload = {
+        "TargetHostId": target_host,
+        "LiveMigration": live
+    }
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.post(
+                f"{base_url}/redfish/v1/Systems/{system_id}/Actions/Oem.HawkFish.Migrate",
+                json=payload,
+                headers=headers
+            )
+            if r.status_code == 200:
+                data = r.json()
+                task_id = data.get("Id")
+                migration_type = "Live" if live else "Offline"
+                typer.echo(f"✓ {migration_type} migration started for {system_id} → {target_host}")
+                typer.echo(f"  Task ID: {task_id}")
+                typer.echo(f"  Track progress: hawkfish tasks show {task_id}")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.command("drain")
+def drain_host(
+    host_id: str = typer.Argument(..., help="Host ID to drain"),
+):
+    """Put a host into maintenance mode and evacuate systems."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.post(
+                f"{base_url}/redfish/v1/Oem/HawkFish/Hosts/{host_id}/Actions/EnterMaintenance",
+                headers=headers
+            )
+            if r.status_code == 200:
+                data = r.json()
+                task_ids = data.get("EvacuationTasks", [])
+                typer.echo(f"✓ Host {host_id} entered maintenance mode")
+                if task_ids:
+                    typer.echo(f"  Evacuation tasks: {', '.join(task_ids)}")
+                    typer.echo("  Monitor progress with: hawkfish tasks ls")
+                else:
+                    typer.echo("  No systems to evacuate")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
 
 
 def main() -> None:

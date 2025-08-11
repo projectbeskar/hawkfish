@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from .api.audit import router as audit_router
 from .api.batch import router as batch_router
 from .api.chassis import router as chassis_router
+from .api.console import router as console_router
 from .api.hosts import router as hosts_router
 from .api.images import router as images_router
 from .api.import_adopt import router as import_router
@@ -16,6 +17,7 @@ from .api.managers import router as managers_router
 from .api.netprofiles import router as netprofiles_router
 from .api.orchestrator import router as orchestrator_router
 from .api.profiles import router as profiles_router
+from .api.projects import router as projects_router
 from .api.service_root import router as service_root_router
 from .api.sessions import router as sessions_router
 from .api.snapshots import router as snapshots_router
@@ -53,6 +55,8 @@ def create_app() -> FastAPI:
             {"name": "NetworkProfiles", "description": "Network profile templates"},
             {"name": "UpdateService", "description": "Software inventory and updates"},
             {"name": "Snapshots", "description": "VM snapshots and backups"},
+            {"name": "Projects", "description": "Multi-tenant projects"},
+            {"name": "Console", "description": "Console access via WebSocket"},
         ],
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
@@ -79,6 +83,8 @@ def create_app() -> FastAPI:
     app.include_router(netprofiles_router)
     app.include_router(update_service_router)
     app.include_router(snapshots_router)
+    app.include_router(projects_router)
+    app.include_router(console_router)
     app.include_router(audit_router)
 
     # Serve UI if enabled

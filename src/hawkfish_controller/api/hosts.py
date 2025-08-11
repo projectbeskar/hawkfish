@@ -89,3 +89,72 @@ async def hosts_delete(host_id: str, session=Depends(require_session)):
     
     await delete_host(host_id)
     return {"TaskState": "Completed"}
+
+
+@router.post("/{host_id}/Actions/EnterMaintenance")
+async def enter_maintenance(host_id: str, session=Depends(require_session)):
+    """Put a host into maintenance mode and evacuate systems."""
+    if not require_role("admin", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    try:
+        from ..services.hosts import set_host_maintenance, evacuate_host
+        from ..services.events import publish_event, subscription_store
+        
+        # Set maintenance mode
+        updated = await set_host_maintenance(host_id, True)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Host not found")
+        
+        # Evacuate systems
+        task_ids = await evacuate_host(host_id)
+        
+        # Emit event
+        await publish_event("HostMaintenanceEntered", {
+            "hostId": host_id,
+            "evacuationTasks": task_ids
+        }, subscription_store)
+        
+        return {
+            "@odata.type": "#ActionInfo.v1_0_0.ActionInfo",
+            "Id": "EnterMaintenance",
+            "Name": "Enter Maintenance Mode",
+            "HostId": host_id,
+            "EvacuationTasks": task_ids,
+            "State": "Completed" if not task_ids else "Running"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{host_id}/Actions/ExitMaintenance")
+async def exit_maintenance(host_id: str, session=Depends(require_session)):
+    """Take a host out of maintenance mode."""
+    if not require_role("admin", session.role):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    try:
+        from ..services.hosts import set_host_maintenance
+        from ..services.events import publish_event, subscription_store
+        
+        # Exit maintenance mode
+        updated = await set_host_maintenance(host_id, False)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Host not found")
+        
+        # Emit event
+        await publish_event("HostMaintenanceExited", {
+            "hostId": host_id
+        }, subscription_store)
+        
+        return {
+            "@odata.type": "#ActionInfo.v1_0_0.ActionInfo",
+            "Id": "ExitMaintenance",
+            "Name": "Exit Maintenance Mode",
+            "HostId": host_id,
+            "State": "Completed"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

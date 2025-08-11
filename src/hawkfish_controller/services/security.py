@@ -1,72 +1,124 @@
 from __future__ import annotations
 
-import os
-import time
-from pathlib import Path
+from typing import Any, Callable
 
-import aiosqlite
-from argon2 import PasswordHasher
+from fastapi import Depends, HTTPException
 
-from ..config import settings
-
-ph = PasswordHasher()
+from .projects import project_store
+from .sessions import require_session
 
 
-async def ensure_user_tables(db_path: str) -> None:
-    Path(os.path.dirname(db_path)).mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS hf_users (
-                username TEXT PRIMARY KEY,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        await db.commit()
-
-
-async def set_user(username: str, password: str, role: str) -> None:
-    await ensure_user_tables(f"{settings.state_dir}/auth.db")
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    pwd_hash = ph.hash(password)
-    async with aiosqlite.connect(f"{settings.state_dir}/auth.db") as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO hf_users (username, password_hash, role, updated_at) VALUES (?, ?, ?, ?)",
-            (username, pwd_hash, role, now),
-        )
-        await db.commit()
-
-
-async def verify_user(username: str, password: str) -> str | None:
-    await ensure_user_tables(f"{settings.state_dir}/auth.db")
-    async with aiosqlite.connect(f"{settings.state_dir}/auth.db") as db:
-        cur = await db.execute("SELECT password_hash, role FROM hf_users WHERE username=?", (username,))
-        row = await cur.fetchone()
-        await cur.close()
-    if not row:
-        return None
-    pwd_hash, role = str(row[0]), str(row[1])
+def get_current_session():
+    """Get the current session (dependency that doesn't raise errors)."""
     try:
-        ph.verify(pwd_hash, password)
-        return role
-    except Exception:
+        return require_session()
+    except HTTPException:
         return None
 
 
-def require_role(required: str, actual: str) -> bool:
-    order = {"viewer": 1, "operator": 2, "admin": 3}
-    return order.get(actual, 0) >= order.get(required, 0)
+def require_role(required_role: str) -> Callable:
+    """Dependency that requires a specific global role."""
+    def dependency(session=Depends(require_session)):
+        if not session:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_role = session.get("role", "viewer")
+        if required_role == "admin" and user_role != "admin":
+            raise HTTPException(status_code=403, detail="Admin role required")
+        
+        return session
+    
+    return dependency
 
 
-async def user_count() -> int:
-    await ensure_user_tables(f"{settings.state_dir}/auth.db")
-    async with aiosqlite.connect(f"{settings.state_dir}/auth.db") as db:
-        cur = await db.execute("SELECT COUNT(*) FROM hf_users")
-        row = await cur.fetchone()
-        await cur.close()
-    return int(row[0]) if row else 0
+def require_project_role(project_id: str, required_role: str) -> Callable:
+    """Dependency that requires a specific role in a project."""
+    async def dependency(session=Depends(require_session)):
+        if not session:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = session.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        
+        # Global admins have access to all projects
+        if session.get("is_admin") or session.get("role") == "admin":
+            return session
+        
+        # Check project-specific role
+        user_role = await project_store.get_user_role(project_id, user_id)
+        if not user_role:
+            raise HTTPException(status_code=403, detail="No access to this project")
+        
+        # Check if user has sufficient role
+        role_hierarchy = {"viewer": 1, "operator": 2, "admin": 3}
+        required_level = role_hierarchy.get(required_role, 3)
+        user_level = role_hierarchy.get(user_role, 0)
+        
+        if user_level < required_level:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Project {required_role} role required, but user has {user_role}"
+            )
+        
+        return session
+    
+    return dependency
 
 
+async def filter_projects_by_access(projects: list[dict[str, Any]], session: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Filter a list of projects based on user access."""
+    if not session:
+        return []
+    
+    user_id = session.get("user_id")
+    if not user_id:
+        return []
+    
+    # Global admins see all projects
+    if session.get("is_admin") or session.get("role") == "admin":
+        return projects
+    
+    # Filter to projects where user has a role
+    accessible_projects = []
+    for project in projects:
+        project_id = project.get("Id") or project.get("id")
+        if project_id == "default":
+            # Everyone has access to default project
+            accessible_projects.append(project)
+        else:
+            role = await project_store.get_user_role(project_id, user_id)
+            if role:
+                accessible_projects.append(project)
+    
+    return accessible_projects
+
+
+async def check_project_access(project_id: str, session: dict[str, Any] | None, required_role: str = "viewer") -> bool:
+    """Check if user has access to a project with the required role."""
+    if not session:
+        return False
+    
+    user_id = session.get("user_id")
+    if not user_id:
+        return False
+    
+    # Global admins have access to all projects
+    if session.get("is_admin") or session.get("role") == "admin":
+        return True
+    
+    # Default project is accessible to all authenticated users
+    if project_id == "default":
+        return True
+    
+    # Check project-specific role
+    user_role = await project_store.get_user_role(project_id, user_id)
+    if not user_role:
+        return False
+    
+    # Check if user has sufficient role
+    role_hierarchy = {"viewer": 1, "operator": 2, "admin": 3}
+    required_level = role_hierarchy.get(required_role, 3)
+    user_level = role_hierarchy.get(user_role, 0)
+    
+    return user_level >= required_level

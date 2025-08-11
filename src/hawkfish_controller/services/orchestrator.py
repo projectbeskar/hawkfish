@@ -12,6 +12,7 @@ import httpx
 from ..config import settings
 from .events import SubscriptionStore, publish_event
 from .hosts import PlacementRequest, get_default_host, schedule_placement, update_host_allocation
+from .projects import project_store
 from .tasks import TaskService
 
 
@@ -26,6 +27,7 @@ class NodeSpec:
     image_url: str | None
     cloud_init: dict[str, Any] | None
     required_labels: dict[str, Any] | None = None
+    project_id: str = "default"  # Multi-tenancy support
 
 
 def _ensure_storage_dirs() -> dict[str, Path]:
@@ -43,8 +45,32 @@ async def create_node(spec: NodeSpec, task_service: TaskService, subs: Subscript
     task = await task_service.create(name=f"Create node {spec.name}")
 
     async def job(task_id: str) -> None:
+        # Check project quotas first
+        await task_service.update(task_id, state="Running", percent=1, message="Checking project quotas")
+        
+        # Check vCPU quota
+        allowed, quota_info = await project_store.check_quota(spec.project_id, "vcpus", spec.vcpus)
+        if not allowed:
+            raise RuntimeError(f"vCPU quota exceeded: {quota_info['current_usage']} + {quota_info['requested']} > {quota_info['quota_limit']}")
+        
+        # Check memory quota
+        memory_gib = spec.memory_mib // 1024
+        allowed, quota_info = await project_store.check_quota(spec.project_id, "memory_gib", memory_gib)
+        if not allowed:
+            raise RuntimeError(f"Memory quota exceeded: {quota_info['current_usage']} + {quota_info['requested']} GiB > {quota_info['quota_limit']} GiB")
+        
+        # Check disk quota
+        allowed, quota_info = await project_store.check_quota(spec.project_id, "disk_gib", spec.disk_gib)
+        if not allowed:
+            raise RuntimeError(f"Disk quota exceeded: {quota_info['current_usage']} + {quota_info['requested']} GiB > {quota_info['quota_limit']} GiB")
+        
+        # Check system count quota
+        allowed, quota_info = await project_store.check_quota(spec.project_id, "systems", 1)
+        if not allowed:
+            raise RuntimeError(f"System count quota exceeded: {quota_info['current_usage']} + 1 > {quota_info['quota_limit']}")
+        
         # Host placement
-        await task_service.update(task_id, state="Running", percent=1, message="Finding suitable host")
+        await task_service.update(task_id, state="Running", percent=5, message="Finding suitable host")
         placement_req = PlacementRequest(
             vcpus=spec.vcpus,
             memory_mib=spec.memory_mib,
@@ -111,8 +137,15 @@ async def create_node(spec: NodeSpec, task_service: TaskService, subs: Subscript
         # libvirt define domain (omitted here); would use XML with devices
         await task_service.update(task_id, percent=80, message="Defining VM")
 
+        # Update project usage counters
+        await task_service.update(task_id, percent=90, message="Updating project usage")
+        await project_store.update_usage(spec.project_id, "vcpus", spec.vcpus)
+        await project_store.update_usage(spec.project_id, "memory_gib", memory_gib)
+        await project_store.update_usage(spec.project_id, "disk_gib", spec.disk_gib)
+        await project_store.update_usage(spec.project_id, "systems", 1)
+
         # emit event
-        await publish_event("SystemCreated", {"systemId": spec.name}, subs)
+        await publish_event("SystemCreated", {"systemId": spec.name, "projectId": spec.project_id}, subs)
         await task_service.update(task_id, state="Completed", percent=100, end=True)
 
     # run in background via thread to avoid event loop constraints
