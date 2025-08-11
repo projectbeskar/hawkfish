@@ -1,0 +1,166 @@
+# Default values for hawkfish
+# This is a YAML-formatted file.
+
+replicaCount: 1
+
+image:
+  repository: hawkfish/hawkfish-controller
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: hawkfish.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: hawkfish-tls
+  #    hosts:
+  #      - hawkfish.local
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# HawkFish-specific configuration
+hawkfish:
+  # API configuration
+  api:
+    host: "0.0.0.0"
+    port: 8080
+  
+  # Authentication mode: "none", "sessions"
+  auth:
+    mode: "sessions"
+  
+  # TLS configuration
+  tls:
+    mode: "off"  # "off", "self-signed", "custom"
+    # For custom TLS, provide secret name containing tls.crt and tls.key
+    secretName: ""
+  
+  # UI configuration
+  ui:
+    enabled: true
+  
+  # Libvirt configuration
+  libvirt:
+    uri: "qemu:///system"
+    pool:
+      min: 1
+      max: 10
+      ttlSec: 300
+  
+  # Storage configuration
+  storage:
+    stateDir: "/var/lib/hawkfish"
+    isoDir: "/var/lib/hawkfish/isos"
+  
+  # Default libvirt hosts to register at startup
+  hosts: []
+    # - uri: "qemu+ssh://host1/system"
+    #   name: "host1"
+    #   labels:
+    #     region: "us-west"
+    #     ssd: "true"
+
+# Persistent volume for state storage
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+# ConfigMap for additional configuration
+config:
+  # Additional hawkfish.toml configuration
+  extra: ""
+
+# Environment variables
+env: []
+  # - name: CUSTOM_VAR
+  #   value: "custom-value"
+
+# Probes configuration
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Metrics and monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    annotations: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

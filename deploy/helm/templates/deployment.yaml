@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hawkfish.fullname" . }}
+  labels:
+    {{- include "hawkfish.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "hawkfish.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "hawkfish.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "hawkfish.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.hawkfish.api.port }}
+              protocol: TCP
+          env:
+            - name: HF_API_HOST
+              value: {{ .Values.hawkfish.api.host | quote }}
+            - name: HF_API_PORT
+              value: {{ .Values.hawkfish.api.port | quote }}
+            - name: HF_AUTH
+              value: {{ .Values.hawkfish.auth.mode | quote }}
+            - name: HF_DEV_TLS
+              value: {{ .Values.hawkfish.tls.mode | quote }}
+            - name: HF_UI_ENABLED
+              value: {{ .Values.hawkfish.ui.enabled | quote }}
+            - name: LIBVIRT_URI
+              value: {{ .Values.hawkfish.libvirt.uri | quote }}
+            - name: HF_LIBVIRT_POOL_MIN
+              value: {{ .Values.hawkfish.libvirt.pool.min | quote }}
+            - name: HF_LIBVIRT_POOL_MAX
+              value: {{ .Values.hawkfish.libvirt.pool.max | quote }}
+            - name: HF_LIBVIRT_POOL_TTL_SEC
+              value: {{ .Values.hawkfish.libvirt.pool.ttlSec | quote }}
+            - name: HF_STATE_DIR
+              value: {{ .Values.hawkfish.storage.stateDir | quote }}
+            - name: HF_ISO_DIR
+              value: {{ .Values.hawkfish.storage.isoDir | quote }}
+            {{- if and .Values.hawkfish.tls.secretName (eq .Values.hawkfish.tls.mode "custom") }}
+            - name: HF_TLS_CERT
+              value: "/etc/hawkfish/tls/tls.crt"
+            - name: HF_TLS_KEY
+              value: "/etc/hawkfish/tls/tls.key"
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /redfish/v1/
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /redfish/v1/
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: {{ .Values.hawkfish.storage.stateDir }}
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.hawkfish.tls.secretName }}
+            - name: tls
+              mountPath: /etc/hawkfish/tls
+              readOnly: true
+            {{- end }}
+            - name: config
+              mountPath: /etc/hawkfish/hawkfish.toml
+              subPath: hawkfish.toml
+              readOnly: true
+      volumes:
+        - name: state
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "hawkfish.fullname" . }}-state
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.hawkfish.tls.secretName }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.hawkfish.tls.secretName }}
+        {{- end }}
+        - name: config
+          configMap:
+            name: {{ include "hawkfish.fullname" . }}-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

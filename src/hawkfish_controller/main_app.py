@@ -1,6 +1,11 @@
+import os
+
 import structlog
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
+from .api.audit import router as audit_router
 from .api.batch import router as batch_router
 from .api.chassis import router as chassis_router
 from .api.hosts import router as hosts_router
@@ -74,6 +79,18 @@ def create_app() -> FastAPI:
     app.include_router(netprofiles_router)
     app.include_router(update_service_router)
     app.include_router(snapshots_router)
+    app.include_router(audit_router)
+
+    # Serve UI if enabled
+    if settings.ui_enabled:
+        ui_dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ui', 'dist')
+        if os.path.exists(ui_dist_path):
+            app.mount("/ui", StaticFiles(directory=ui_dist_path, html=True), name="ui")
+            
+            @app.get("/ui/")
+            async def serve_ui():
+                index_path = os.path.join(ui_dist_path, 'index.html')
+                return FileResponse(index_path)
 
     return app
 

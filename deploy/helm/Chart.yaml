@@ -1,0 +1,17 @@
+apiVersion: v2
+name: hawkfish
+description: A Helm chart for HawkFish virtualization management
+type: application
+version: 0.7.0
+appVersion: "0.7.0"
+keywords:
+  - virtualization
+  - redfish
+  - libvirt
+  - kvm
+home: https://github.com/projectbeskar/hawkfish
+sources:
+  - https://github.com/projectbeskar/hawkfish
+maintainers:
+  - name: HawkFish Team
+    email: hawkfish@projectbeskar.org

@@ -2,6 +2,8 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from ..services.libvirt_pool import pool_manager
+
 router = APIRouter(prefix="/redfish/v1", tags=["ServiceRoot"])
 
 
@@ -37,5 +39,11 @@ def get_service_root():
 @router.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@router.get("/libvirt-pool-metrics")
+def libvirt_pool_metrics():
+    """Get libvirt connection pool metrics."""
+    return pool_manager.get_metrics()
 
 

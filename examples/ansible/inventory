@@ -1,0 +1,7 @@
+[hawkfish]
+localhost ansible_connection=local
+
+[hawkfish:vars]
+hawkfish_endpoint=http://localhost:8080
+hawkfish_username=local
+hawkfish_password=
