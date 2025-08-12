@@ -9,6 +9,7 @@ export default defineConfig({
     assetsDir: 'assets',
   },
   server: {
+    host: '0.0.0.0',  // Allow external connections
     port: 3000,
     proxy: {
       '/redfish': {

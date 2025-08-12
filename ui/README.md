@@ -21,6 +21,9 @@ npm install
 # Start development server (with API proxy)
 npm run dev
 
+# Access from other machines on network:
+# http://YOUR_IP_ADDRESS:3000/
+
 # Build for production
 npm run build
 
