@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..services.security import get_current_session, require_role
+from ..services.security import get_current_session, check_role, require_role
 from ..services.storage import storage_service
 from .errors import redfish_error
 

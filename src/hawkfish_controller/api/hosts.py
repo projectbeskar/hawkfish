@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from jsonschema import Draft7Validator, ValidationError
 
 from ..services.hosts import add_host, delete_host, get_host, list_hosts
-from ..services.security import require_role
+from ..services.security import check_role
 from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Hosts", tags=["Hosts"])
@@ -62,7 +62,7 @@ async def hosts_get(host_id: str, session=Depends(require_session)):
 @router.post("")
 async def hosts_create(body: dict, session=Depends(require_session)):
     """Add a new host to the pool."""
-    if not require_role("admin", session.role):
+    if not check_role("admin", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     try:
@@ -84,7 +84,7 @@ async def hosts_create(body: dict, session=Depends(require_session)):
 @router.delete("/{host_id}")
 async def hosts_delete(host_id: str, session=Depends(require_session)):
     """Remove a host from the pool."""
-    if not require_role("admin", session.role):
+    if not check_role("admin", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     await delete_host(host_id)
@@ -94,7 +94,7 @@ async def hosts_delete(host_id: str, session=Depends(require_session)):
 @router.post("/{host_id}/Actions/EnterMaintenance")
 async def enter_maintenance(host_id: str, session=Depends(require_session)):
     """Put a host into maintenance mode and evacuate systems."""
-    if not require_role("admin", session.role):
+    if not check_role("admin", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     try:
@@ -131,7 +131,7 @@ async def enter_maintenance(host_id: str, session=Depends(require_session)):
 @router.post("/{host_id}/Actions/ExitMaintenance")
 async def exit_maintenance(host_id: str, session=Depends(require_session)):
     """Take a host out of maintenance mode."""
-    if not require_role("admin", session.role):
+    if not check_role("admin", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     try:

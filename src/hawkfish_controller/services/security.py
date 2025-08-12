@@ -5,7 +5,7 @@ from typing import Any, Callable
 from fastapi import Depends, HTTPException
 
 from .projects import project_store
-from .sessions import require_session
+from ..api.sessions import require_session
 
 
 def get_current_session():
@@ -29,6 +29,14 @@ def require_role(required_role: str) -> Callable:
         return session
     
     return dependency
+
+
+def check_role(required_role: str, user_role: str) -> bool:
+    """Simple role check function."""
+    role_hierarchy = {"viewer": 1, "operator": 2, "admin": 3}
+    required_level = role_hierarchy.get(required_role, 3)
+    user_level = role_hierarchy.get(user_role, 0)
+    return user_level >= required_level
 
 
 def require_project_role(project_id: str, required_role: str) -> Callable:

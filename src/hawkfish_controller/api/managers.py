@@ -13,7 +13,7 @@ from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
 from ..services.metrics import BYTES_DOWNLOADED, MEDIA_ACTIONS
-from ..services.security import require_role
+from ..services.security import check_role
 from .sessions import require_session
 from .task_event import get_task_service
 
@@ -55,7 +55,7 @@ def list_virtual_media():
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia", response_model=None)
 def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
     image = body.get("Image")
@@ -131,7 +131,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.EjectMedia")
 def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
     if not system_id:

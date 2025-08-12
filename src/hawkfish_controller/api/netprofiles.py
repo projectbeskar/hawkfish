@@ -9,7 +9,7 @@ from ..services.netprofiles import (
     get_netprofile,
     list_netprofiles,
 )
-from ..services.security import require_role
+from ..services.security import check_role
 from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/NetworkProfiles", tags=["NetworkProfiles"])
@@ -76,7 +76,7 @@ async def netprofiles_get(profile_id: str, session=Depends(require_session)):
 @router.post("")
 async def netprofiles_create(body: dict, session=Depends(require_session)):
     """Create a new network profile."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     try:
@@ -112,7 +112,7 @@ async def netprofiles_create(body: dict, session=Depends(require_session)):
 @router.delete("/{profile_id}")
 async def netprofiles_delete(profile_id: str, session=Depends(require_session)):
     """Remove a network profile."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     await delete_netprofile(profile_id)

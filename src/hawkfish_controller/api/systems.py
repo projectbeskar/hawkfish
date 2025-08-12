@@ -6,7 +6,7 @@ from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
 from ..services.metrics import POWER_ACTIONS
-from ..services.security import require_role
+from ..services.security import check_role
 from .errors import redfish_error
 from .sessions import require_session
 
@@ -111,7 +111,7 @@ def get_system(system_id: str, response: Response, driver: LibvirtDriver = Depen
 
 @router.post("/{system_id}/Actions/ComputerSystem.Reset")
 def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     reset_type = body.get("ResetType")
     if not reset_type:
@@ -131,7 +131,7 @@ def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = D
 
 @router.post("/{system_id}/Actions/ComputerSystem.SetDefaultBootOrder")
 def set_default_boot_order(system_id: str, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     # For now, set to HDD persistently
     try:
@@ -143,7 +143,7 @@ def set_default_boot_order(system_id: str, driver: LibvirtDriver = Depends(get_d
 
 @router.patch("/{system_id}")
 def set_boot_override(system_id: str, body: dict[str, Any], driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session), if_match: str | None = Header(default=None, alias="If-Match")):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     boot = body.get("Boot") or {}
     target = boot.get("BootSourceOverrideTarget")
@@ -173,7 +173,7 @@ def set_boot_override(system_id: str, body: dict[str, Any], driver: LibvirtDrive
 
 @router.post("/{system_id}/Actions/Oem.HawkFish.BootToPXE")
 def boot_to_pxe(system_id: str, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         driver.set_boot_override(system_id, target="pxe", persist=False)

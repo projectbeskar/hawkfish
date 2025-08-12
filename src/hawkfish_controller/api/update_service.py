@@ -108,9 +108,9 @@ def simple_update(body: dict, session=Depends(require_session)):
     """Simple update action (read-only for now)."""
     from fastapi import HTTPException
 
-    from ..services.security import require_role
+    from ..services.security import check_role
     
-    if not require_role("admin", session.role):
+    if not check_role("admin", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     # For now, return not implemented

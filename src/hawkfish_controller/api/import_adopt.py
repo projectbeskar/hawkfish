@@ -6,7 +6,7 @@ from ..config import settings
 from ..drivers.libvirt_driver import LibvirtDriver
 from ..services.adoption import create_adoption, get_adoption_by_system_id, list_adoptions
 from ..services.hosts import get_default_host, get_host
-from ..services.security import require_role
+from ..services.security import check_role
 from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Import", tags=["Import"])
@@ -25,7 +25,7 @@ def import_scan(driver: LibvirtDriver = Depends(get_driver), session=Depends(req
 
 @router.post("/Adopt")
 async def import_adopt(body: dict, dry_run: bool = Query(default=False), driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     domains = body.get("Domains") or []

@@ -27,7 +27,7 @@ from .api.task_event import router as task_event_router
 from .api.update_service import router as update_service_router
 from .config import ensure_directories, settings
 from .middleware import MetricsLoggingMiddleware
-from .middleware.rate_limit import RateLimitMiddleware
+from .rate_limit import RateLimitMiddleware
 
 
 def create_app() -> FastAPI:
@@ -67,7 +67,9 @@ def create_app() -> FastAPI:
     ensure_directories()
     structlog.configure(processors=[structlog.processors.JSONRenderer()])
     app.add_middleware(MetricsLoggingMiddleware)
-    app.add_middleware(RateLimitMiddleware, enabled=settings.auth_mode != "none")  # Disable in dev mode
+    # Only add rate limiting in non-dev mode
+    if settings.auth_mode != "none":
+        app.add_middleware(RateLimitMiddleware)
 
     app.include_router(service_root_router)
     app.include_router(systems_router)

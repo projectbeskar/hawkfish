@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..services.projects import project_store
-from ..services.security import require_role, get_current_session
+from ..services.security import check_role, require_role, get_current_session
 from .errors import redfish_error
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Projects", tags=["Projects"])

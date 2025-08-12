@@ -219,7 +219,7 @@ async def get_default_host() -> Host | None:
 
 async def set_host_maintenance(host_id: str, maintenance: bool) -> bool:
     """Set host maintenance mode."""
-    await _init_hosts()
+    await init_hosts()
     
     new_state = "maintenance" if maintenance else "active"
     
@@ -238,7 +238,7 @@ async def get_systems_on_host(host_id: str) -> list[dict[str, Any]]:
     """Get list of systems currently running on a host."""
     # This would typically query the Systems table filtered by host_id
     # For now, return empty list as systems don't track host placement yet
-    await _init_hosts()
+    await init_hosts()
     
     # In a full implementation, this would query:
     # SELECT system_id, name, state FROM hf_systems WHERE host_id = ?
@@ -317,7 +317,7 @@ async def migrate_system(system_id: str, source_host_id: str, target_host_id: st
 
 async def evacuate_host(host_id: str) -> list[str]:
     """Evacuate all systems from a host via live migration. Returns list of task IDs."""
-    await _init_hosts()
+    await init_hosts()
     
     # Get systems on this host
     systems = await get_systems_on_host(host_id)
