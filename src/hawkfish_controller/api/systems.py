@@ -230,3 +230,51 @@ def get_ethernet_interface(system_id: str, interface_id: str, response: Response
     return interface_copy
 
 
+@router.post("/{system_id}/Actions/Oem.HawkFish.Migrate")
+async def migrate_system_action(
+    system_id: str,
+    action_data: dict,
+    session=Depends(require_session),
+    driver: LibvirtDriver = Depends(get_driver)
+):
+    """Migrate a system to another host."""
+    # Extract migration parameters
+    target_host_id = action_data.get("TargetHostId")
+    live_migration = action_data.get("LiveMigration", True)
+    
+    if not target_host_id:
+        return redfish_error("MissingParameter", "TargetHostId is required", 400)
+    
+    try:
+        # Get current system state to find source host
+        systems = driver.list_systems()
+        system = next((s for s in systems if s["Id"] == system_id), None)
+        
+        if not system:
+            return redfish_error("ResourceNotFound", f"System {system_id} not found", 404)
+        
+        # For now, assume source host is default
+        # In a real implementation, this would be tracked in the system metadata
+        source_host_id = "localhost"  # Default/mock source host
+        
+        from ..services.hosts import migrate_system
+        task_id = await migrate_system(
+            system_id=system_id,
+            source_host_id=source_host_id,
+            target_host_id=target_host_id,
+            live=live_migration
+        )
+        
+        return {
+            "@odata.type": "#Task.v1_7_0.Task",
+            "Id": task_id,
+            "Name": f"Migrate {system_id}",
+            "TaskState": "Running",
+            "TargetHostId": target_host_id,
+            "LiveMigration": live_migration
+        }
+        
+    except Exception as e:
+        return redfish_error("OperationFailed", str(e), 500)
+
+

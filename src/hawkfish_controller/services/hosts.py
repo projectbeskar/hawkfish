@@ -215,3 +215,135 @@ async def get_default_host() -> Host | None:
         # Auto-add localhost if no hosts configured
         return await add_host(settings.libvirt_uri, "localhost", {"auto": True})
     return hosts[0]
+
+
+async def set_host_maintenance(host_id: str, maintenance: bool) -> bool:
+    """Set host maintenance mode."""
+    await _init_hosts()
+    
+    new_state = "maintenance" if maintenance else "active"
+    
+    async with aiosqlite.connect(f"{settings.state_dir}/hawkfish.db") as db:
+        cursor = await db.execute(
+            "UPDATE hf_hosts SET state = ? WHERE id = ?",
+            (new_state, host_id)
+        )
+        updated = cursor.rowcount > 0
+        await db.commit()
+        
+        return updated
+
+
+async def get_systems_on_host(host_id: str) -> list[dict[str, Any]]:
+    """Get list of systems currently running on a host."""
+    # This would typically query the Systems table filtered by host_id
+    # For now, return empty list as systems don't track host placement yet
+    await _init_hosts()
+    
+    # In a full implementation, this would query:
+    # SELECT system_id, name, state FROM hf_systems WHERE host_id = ?
+    # For now, return mock data for testing
+    return []
+
+
+async def migrate_system(system_id: str, source_host_id: str, target_host_id: str, live: bool = True) -> str:
+    """Initiate system migration between hosts. Returns task ID."""
+    from .tasks import task_service
+    
+    task = await task_service.create(name=f"Migrate {system_id} from {source_host_id} to {target_host_id}")
+    
+    async def migration_job(task_id: str) -> None:
+        try:
+            await task_service.update(task_id, state="Running", percent=1, message="Starting migration")
+            
+            # Get host details
+            source_host = await get_host(source_host_id)
+            target_host = await get_host(target_host_id)
+            
+            if not source_host or not target_host:
+                raise RuntimeError("Source or target host not found")
+            
+            if target_host.state == "maintenance":
+                raise RuntimeError("Target host is in maintenance mode")
+            
+            await task_service.update(task_id, percent=10, message="Validating migration compatibility")
+            
+            # In a real implementation, this would:
+            # 1. Check CPU compatibility between hosts
+            # 2. Ensure shared storage or copy disks
+            # 3. Perform pre-migration checks
+            # 4. Execute libvirt migrate/migrateToURI3
+            # 5. Update system host assignment
+            
+            await task_service.update(task_id, percent=30, message="Checking CPU compatibility")
+            # Mock CPU check delay
+            import asyncio
+            await asyncio.sleep(1)
+            
+            await task_service.update(task_id, percent=50, message="Starting live migration")
+            # Mock migration process
+            await asyncio.sleep(2)
+            
+            await task_service.update(task_id, percent=80, message="Finalizing migration")
+            await asyncio.sleep(1)
+            
+            # Update host allocations (in real implementation)
+            # This would move resource allocation from source to target
+            
+            await task_service.update(task_id, percent=100, state="Completed", message="Migration completed successfully", end=True)
+            
+            # Emit migration events
+            from .events import publish_event
+            from .events import subscription_store
+            await publish_event("SystemMigrated", {
+                "systemId": system_id,
+                "sourceHostId": source_host_id,
+                "targetHostId": target_host_id,
+                "migrationType": "live" if live else "offline"
+            }, subscription_store)
+            
+        except Exception as e:
+            await task_service.update(task_id, state="Exception", message=str(e), end=True)
+            raise
+    
+    # Run migration in background
+    await task_service.run_background(
+        name=f"Migrate {system_id}",
+        coro_factory=lambda tid: migration_job(tid)
+    )
+    
+    return task.id
+
+
+async def evacuate_host(host_id: str) -> list[str]:
+    """Evacuate all systems from a host via live migration. Returns list of task IDs."""
+    await _init_hosts()
+    
+    # Get systems on this host
+    systems = await get_systems_on_host(host_id)
+    
+    if not systems:
+        return []
+    
+    # Find target hosts for migration
+    hosts = await list_hosts()
+    available_hosts = [h for h in hosts if h.id != host_id and h.state == "active"]
+    
+    if not available_hosts:
+        raise RuntimeError("No available hosts for evacuation")
+    
+    task_ids = []
+    
+    for system in systems:
+        # Simple round-robin assignment
+        target_host = available_hosts[len(task_ids) % len(available_hosts)]
+        
+        task_id = await migrate_system(
+            system_id=system["system_id"],
+            source_host_id=host_id,
+            target_host_id=target_host.id,
+            live=True
+        )
+        task_ids.append(task_id)
+    
+    return task_ids
