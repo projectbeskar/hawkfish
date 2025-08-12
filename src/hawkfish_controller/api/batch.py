@@ -9,7 +9,7 @@ from ..config import settings
 from ..services.events import SubscriptionStore, publish_event
 from ..services.orchestrator import NodeSpec, create_node
 from ..services.profiles import get_profile
-from ..services.security import require_role
+from ..services.security import check_role
 from ..services.tasks import TaskService
 from .sessions import require_session
 
@@ -37,7 +37,7 @@ _BATCH_SCHEMA = {
 
 @router.post("")
 async def batch_create(body: dict, task_service: TaskService = Depends(get_task_service), session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         Draft7Validator(_BATCH_SCHEMA).validate(body)

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from jsonschema import Draft7Validator, ValidationError
 
 from ..services.images import add_image, delete_image, get_image, list_images, prune_unused_images
-from ..services.security import require_role
+from ..services.security import check_role
 from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Images", tags=["Images"])
@@ -69,7 +69,7 @@ async def images_get(image_id: str, session=Depends(require_session)):
 @router.post("")
 async def images_create(body: dict, session=Depends(require_session)):
     """Add a new image to the catalog."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     try:
@@ -93,7 +93,7 @@ async def images_create(body: dict, session=Depends(require_session)):
 @router.delete("/{image_id}")
 async def images_delete(image_id: str, session=Depends(require_session)):
     """Remove an image from the catalog."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     await delete_image(image_id)
@@ -103,7 +103,7 @@ async def images_delete(image_id: str, session=Depends(require_session)):
 @router.post("/Actions/Prune")
 async def images_prune(session=Depends(require_session)):
     """Remove unreferenced images."""
-    if not require_role("admin", session.role):
+    if not check_role("admin", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     pruned = await prune_unused_images()

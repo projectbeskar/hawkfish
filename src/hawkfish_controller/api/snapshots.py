@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from jsonschema import Draft7Validator, ValidationError
 
 from ..services.events import SubscriptionStore, publish_event
-from ..services.security import require_role
+from ..services.security import check_role
 from ..services.snapshots import (
     create_snapshot,
     delete_snapshot,
@@ -81,7 +81,7 @@ async def get_system_snapshot(system_id: str, snapshot_id: str, response: Respon
 @router.post("/redfish/v1/Systems/{system_id}/Oem/HawkFish/Snapshots")
 async def create_system_snapshot(system_id: str, body: dict, session=Depends(require_session)):
     """Create a new snapshot."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     # Validate input
@@ -144,7 +144,7 @@ async def create_system_snapshot(system_id: str, body: dict, session=Depends(req
 @router.post("/redfish/v1/Systems/{system_id}/Oem/HawkFish/Snapshots/{snapshot_id}/Actions/Oem.HawkFish.Snapshot.Revert")
 async def revert_system_snapshot(system_id: str, snapshot_id: str, session=Depends(require_session)):
     """Revert system to a snapshot."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     snapshot = await get_snapshot(system_id, snapshot_id)
@@ -196,7 +196,7 @@ async def revert_system_snapshot(system_id: str, snapshot_id: str, session=Depen
 @router.delete("/redfish/v1/Systems/{system_id}/Oem/HawkFish/Snapshots/{snapshot_id}")
 async def delete_system_snapshot(system_id: str, snapshot_id: str, session=Depends(require_session)):
     """Delete a snapshot."""
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     
     snapshot = await get_snapshot(system_id, snapshot_id)

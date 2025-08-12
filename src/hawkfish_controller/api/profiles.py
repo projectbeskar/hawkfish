@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from jsonschema import Draft7Validator, ValidationError
 
 from ..services.profiles import create_profile, delete_profile, get_profile, list_profiles
-from ..services.security import require_role
+from ..services.security import check_role
 from .sessions import require_session
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Profiles", tags=["Profiles"])
@@ -69,7 +69,7 @@ PROFILE_SCHEMA = {
 
 @router.post("")
 async def profiles_create(body: dict, session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     profile_id = body.get("Name")
     if not profile_id:
@@ -84,7 +84,7 @@ async def profiles_create(body: dict, session=Depends(require_session)):
 
 @router.delete("/{profile_id}")
 async def profiles_delete(profile_id: str, session=Depends(require_session)):
-    if not require_role("operator", session.role):
+    if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     await delete_profile(profile_id)
     return {"TaskState": "Completed"}
