@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..services.projects import project_store
-from ..services.security import check_role, get_current_session
+from ..services.security import check_role, require_role, get_current_session
 from .errors import redfish_error
 
 router = APIRouter(prefix="/redfish/v1/Oem/HawkFish/Projects", tags=["Projects"])
@@ -63,7 +63,7 @@ async def list_projects(
 @router.post("")
 async def create_project(
     project_data: ProjectCreate,
-    session=Depends(check_role("admin")),  # Only admins can create projects
+    session=Depends(require_role("admin")),  # Only admins can create projects
 ):
     """Create a new project."""
     try:
@@ -128,7 +128,7 @@ async def get_project(
 @router.delete("/{project_id}")
 async def delete_project(
     project_id: str,
-    session=Depends(check_role("admin")),
+    session=Depends(require_role("admin")),
 ):
     """Delete a project."""
     try:
@@ -289,7 +289,7 @@ async def get_project_usage(
 async def set_project_quotas(
     project_id: str,
     quota_data: QuotaUpdate,
-    session=Depends(check_role("admin")),
+    session=Depends(require_role("admin")),
 ):
     """Set project quotas (admin only)."""
     user_id = session.get("user_id", "admin")

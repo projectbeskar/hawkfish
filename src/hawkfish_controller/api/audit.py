@@ -72,7 +72,7 @@ async def get_audit_logs(
 
 @router.get("/Stats")
 async def get_audit_stats(
-    session=Depends(check_role("admin")),
+    session=Depends(require_role("admin")),
 ):
     """Get audit log statistics."""
     stats = await audit_logger.get_audit_stats()

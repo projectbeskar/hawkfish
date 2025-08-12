@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..services.security import get_current_session, check_role
+from ..services.security import get_current_session, check_role, require_role
 from ..services.storage import storage_service
 from .errors import redfish_error
 
@@ -86,7 +86,7 @@ async def list_pools(
 @pools_router.post("")
 async def create_pool(
     pool_data: PoolCreate,
-    session=Depends(check_role("admin")),
+    session=Depends(require_role("admin")),
 ):
     """Create a new storage pool."""
     try:
@@ -156,7 +156,7 @@ async def get_pool(
 @pools_router.delete("/{pool_id}")
 async def delete_pool(
     pool_id: str,
-    session=Depends(check_role("admin")),
+    session=Depends(require_role("admin")),
 ):
     """Delete a storage pool."""
     try:
