@@ -16,6 +16,7 @@ from .api.ipxe import router as ipxe_router
 from .api.managers import router as managers_router
 from .api.netprofiles import router as netprofiles_router
 from .api.orchestrator import router as orchestrator_router
+from .api.persona import router as persona_router
 from .api.profiles import router as profiles_router
 from .api.projects import router as projects_router
 from .api.service_root import router as service_root_router
@@ -28,6 +29,8 @@ from .api.update_service import router as update_service_router
 from .config import ensure_directories, settings
 from .middleware import MetricsLoggingMiddleware
 from .rate_limit import RateLimitMiddleware
+from .persona.registry import persona_registry
+from .persona.hpe_ilo5 import hpe_ilo5_plugin
 
 
 def create_app() -> FastAPI:
@@ -71,6 +74,10 @@ def create_app() -> FastAPI:
     if settings.auth_mode != "none":
         app.add_middleware(RateLimitMiddleware)
 
+    # Register and mount persona plugins
+    persona_registry.register_plugin(hpe_ilo5_plugin)
+    persona_registry.mount_all(app)
+
     app.include_router(service_root_router)
     app.include_router(systems_router)
     app.include_router(sessions_router)
@@ -79,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(task_event_router)
     app.include_router(orchestrator_router)
     app.include_router(profiles_router)
+    app.include_router(persona_router)
     app.include_router(batch_router)
     app.include_router(ipxe_router)
     app.include_router(import_router)

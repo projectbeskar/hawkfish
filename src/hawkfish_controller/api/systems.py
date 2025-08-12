@@ -110,18 +110,31 @@ def get_system(system_id: str, response: Response, driver: LibvirtDriver = Depen
 
 
 @router.post("/{system_id}/Actions/ComputerSystem.Reset")
-def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+async def system_reset(system_id: str, body: dict[str, Any], driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
     if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     reset_type = body.get("ResetType")
     if not reset_type:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ResetType required")
+    
     try:
+        # Apply any pending BIOS changes before reset
+        from ..services.bios import bios_service
+        pending_bios = await bios_service.apply_pending_bios_changes(system_id)
+        if pending_bios:
+            # Log BIOS settings applied
+            from anyio import from_thread as _from_thread
+            subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
+            await publish_event("BiosSettingsApplied", {
+                "systemId": system_id, 
+                "attributes": pending_bios
+            }, subs)
+        
         driver.reset_system(system_id, reset_type)
         # fire event (ensure loop context via anyio)
         from anyio import from_thread as _from_thread
         subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
-        _from_thread.run(publish_event, "PowerStateChanged", {"systemId": system_id, "details": {"reset": reset_type}}, subs)
+        await publish_event("PowerStateChanged", {"systemId": system_id, "details": {"reset": reset_type}}, subs)
         POWER_ACTIONS.labels(reset_type=reset_type, result="success").inc()
     except LibvirtError as exc:
         POWER_ACTIONS.labels(reset_type=reset_type, result="error").inc()

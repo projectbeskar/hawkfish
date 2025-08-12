@@ -1048,6 +1048,177 @@ def volumes_create(
         raise typer.Exit(code=1)
 
 
+# Persona commands
+persona = typer.Typer(help="Manage system personas")
+app.add_typer(persona, name="persona")
+
+
+@persona.command("list")
+def persona_list():
+    """List available personas."""
+    url = f"{api_base()}/Oem/HawkFish/Personas"
+    try:
+        with httpx.Client() as client:
+            r = client.get(url, headers=auth_headers())
+            r.raise_for_status()
+            data = r.json()
+            
+            typer.echo("Available Personas:")
+            for member in data.get("Members", []):
+                name = member.get("Name", "Unknown")
+                typer.echo(f"  • {name}")
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@persona.command("show")
+def persona_show(system_id: str = typer.Argument(..., help="System ID")):
+    """Show persona for a system."""
+    url = f"{api_base()}/Oem/HawkFish/Personas/Systems/{system_id}"
+    try:
+        with httpx.Client() as client:
+            r = client.get(url, headers=auth_headers())
+            r.raise_for_status()
+            data = r.json()
+            
+            typer.echo(f"System: {data['SystemId']}")
+            typer.echo(f"Persona: {data['Persona']}")
+            typer.echo(f"Source: {data['Source']}")
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@persona.command("set")
+def persona_set(
+    system_id: str = typer.Argument(..., help="System ID"),
+    persona_name: str = typer.Argument(..., help="Persona name")
+):
+    """Set persona for a system."""
+    url = f"{api_base()}/Oem/HawkFish/Personas/Systems/{system_id}"
+    payload = {"persona": persona_name}
+    
+    try:
+        with httpx.Client() as client:
+            r = client.patch(url, json=payload, headers=auth_headers())
+            r.raise_for_status()
+            data = r.json()
+            
+            typer.echo(f"✓ {data['Message']}")
+    
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 403:
+            typer.echo("Error: Only project admins can change system personas", err=True)
+        else:
+            typer.echo(f"Error: {e.response.status_code} {e.response.text}", err=True)
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+# BIOS commands
+bios = typer.Typer(help="Manage BIOS settings")
+app.add_typer(bios, name="bios")
+
+
+@bios.command("show")
+def bios_show(system_id: str = typer.Argument(..., help="System ID")):
+    """Show BIOS settings for a system."""
+    url = f"{api_base()}/Systems/{system_id}/Bios"
+    try:
+        with httpx.Client() as client:
+            r = client.get(url, headers=auth_headers())
+            r.raise_for_status()
+            data = r.json()
+            
+            typer.echo(f"BIOS Settings for {system_id}:")
+            typer.echo()
+            
+            attributes = data.get("Attributes", {})
+            for key, value in attributes.items():
+                typer.echo(f"  {key}: {value}")
+            
+            # Show pending changes
+            oem_hpe = data.get("Oem", {}).get("Hpe", {})
+            if oem_hpe.get("PendingChanges"):
+                typer.echo()
+                typer.echo("⏳ Pending changes will be applied on next reset")
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@bios.command("set")
+def bios_set(
+    system_id: str = typer.Argument(..., help="System ID"),
+    boot_mode: str = typer.Option(None, "--boot-mode", help="Boot mode (Uefi|LegacyBios)"),
+    secure_boot: str = typer.Option(None, "--secure-boot", help="Secure boot (Enabled|Disabled)"),
+    boot_order: str = typer.Option(None, "--boot-order", help="Boot order (comma-separated: Cd,Pxe,Hdd)"),
+    apply_time: str = typer.Option("OnReset", "--apply-time", help="Apply time (OnReset|Immediate)")
+):
+    """Set BIOS settings."""
+    url = f"{api_base()}/Systems/{system_id}/Bios/Settings"
+    
+    attributes = {}
+    if boot_mode:
+        attributes["BootMode"] = boot_mode
+    if secure_boot:
+        attributes["SecureBoot"] = secure_boot
+    if boot_order:
+        attributes["PersistentBootConfigOrder"] = boot_order.split(",")
+    
+    if not attributes:
+        typer.echo("Error: No BIOS attributes specified", err=True)
+        raise typer.Exit(code=1)
+    
+    payload = {
+        "Attributes": attributes,
+        "Oem": {
+            "Hpe": {
+                "ApplyTime": apply_time
+            }
+        }
+    }
+    
+    try:
+        with httpx.Client() as client:
+            r = client.patch(url, json=payload, headers=auth_headers())
+            r.raise_for_status()
+            data = r.json()
+            
+            typer.echo(f"✓ {data['Message']}")
+            if apply_time == "OnReset":
+                typer.echo("Changes will be applied on next system reset")
+    
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("detail", {})
+                if isinstance(error_detail, dict):
+                    error_info = error_detail.get("error", {})
+                    extended_info = error_info.get("@Message.ExtendedInfo", [])
+                    if extended_info:
+                        typer.echo(f"Error: {extended_info[0].get('Message', 'Invalid request')}", err=True)
+                    else:
+                        typer.echo(f"Error: {error_info.get('message', 'Invalid request')}", err=True)
+                else:
+                    typer.echo(f"Error: {error_detail}", err=True)
+            except:
+                typer.echo(f"Error: {e.response.text}", err=True)
+        else:
+            typer.echo(f"Error: {e.response.status_code} {e.response.text}", err=True)
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 def main() -> None:
     app()
 

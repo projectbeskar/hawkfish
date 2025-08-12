@@ -23,6 +23,7 @@ class Project:
     labels: dict[str, Any]
     quotas: dict[str, int]
     usage: dict[str, int]
+    default_persona: str = "generic"
 
 
 @dataclass
@@ -56,7 +57,8 @@ class ProjectStore:
                     description TEXT,
                     created_at TEXT NOT NULL,
                     labels TEXT,
-                    quotas TEXT
+                    quotas TEXT,
+                    default_persona TEXT DEFAULT 'generic'
                 )
             """)
             
@@ -95,6 +97,27 @@ class ProjectStore:
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (project_id, resource_type),
                     FOREIGN KEY (project_id) REFERENCES hf_projects (id) ON DELETE CASCADE
+                )
+            """)
+            
+            # System persona overrides
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hf_system_personas (
+                    system_id TEXT PRIMARY KEY,
+                    persona TEXT NOT NULL DEFAULT 'generic',
+                    updated_at TEXT NOT NULL,
+                    updated_by TEXT
+                )
+            """)
+            
+            # BIOS settings staging for ApplyTime=OnReset
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hf_bios_pending (
+                    system_id TEXT PRIMARY KEY,
+                    attributes TEXT NOT NULL,
+                    apply_time TEXT NOT NULL,
+                    staged_at TEXT NOT NULL,
+                    staged_by TEXT
                 )
             """)
             
