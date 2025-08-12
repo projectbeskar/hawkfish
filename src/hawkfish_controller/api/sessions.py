@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Header, HTTPException, status
 
 from ..config import settings
-from ..services.security import set_user, user_count, verify_user
+from ..services.users import set_user, user_count, verify_user
 from ..services.sessions import Session, global_session_store
 
 router = APIRouter(prefix="/redfish/v1/SessionService", tags=["Sessions"])

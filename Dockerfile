@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 WORKDIR /app
 COPY pyproject.toml ./
-RUN pip install --user --no-cache-dir .[all]
+RUN pip install --user --no-cache-dir .[virt]
 
 # Final runtime stage
 FROM python:3.11-slim
