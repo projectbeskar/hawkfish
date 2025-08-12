@@ -21,6 +21,7 @@ from .api.projects import router as projects_router
 from .api.service_root import router as service_root_router
 from .api.sessions import router as sessions_router
 from .api.snapshots import router as snapshots_router
+from .api.storage import pools_router, volumes_router, system_volumes_router
 from .api.systems import router as systems_router
 from .api.task_event import router as task_event_router
 from .api.update_service import router as update_service_router
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
             {"name": "Snapshots", "description": "VM snapshots and backups"},
             {"name": "Projects", "description": "Multi-tenant projects"},
             {"name": "Console", "description": "Console access via WebSocket"},
+            {"name": "Storage", "description": "Storage pools and volumes"},
         ],
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
@@ -85,6 +87,9 @@ def create_app() -> FastAPI:
     app.include_router(snapshots_router)
     app.include_router(projects_router)
     app.include_router(console_router)
+    app.include_router(pools_router)
+    app.include_router(volumes_router)
+    app.include_router(system_volumes_router)
     app.include_router(audit_router)
 
     # Serve UI if enabled

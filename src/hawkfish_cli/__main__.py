@@ -861,6 +861,193 @@ def drain_host(
         raise typer.Exit(code=1)
 
 
+@app.group()
+def pools():
+    """Storage pool management."""
+    pass
+
+
+@pools.command("ls")
+def pools_list():
+    """List storage pools."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.get(f"{base_url}/redfish/v1/Oem/HawkFish/Storage/Pools", headers=headers)
+            if r.status_code != 200:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+            
+            data = r.json()
+            pools = data.get("Members", [])
+            
+            if not pools:
+                typer.echo("No storage pools found")
+                return
+            
+            for pool in pools:
+                capacity = pool.get("CapacityGB", 0)
+                allocated = pool.get("AllocatedGB", 0)
+                available = pool.get("AvailableGB", 0)
+                
+                typer.echo(f"• {pool['Id']}: {pool['Name']} ({pool['Type']})")
+                typer.echo(f"  Host: {pool['HostId']}")
+                typer.echo(f"  Path: {pool['TargetPath']}")
+                typer.echo(f"  Capacity: {allocated}/{capacity} GB ({available} GB free)")
+                typer.echo(f"  State: {pool['State']}")
+                typer.echo()
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@pools.command("create")
+def pools_create(
+    name: str = typer.Argument(..., help="Pool name"),
+    type: str = typer.Option("dir", "--type", help="Pool type (dir, nfs, lvm)"),
+    path: str = typer.Option(..., "--path", help="Target path"),
+    host_id: str = typer.Option(..., "--host", help="Host ID"),
+    capacity_gb: int = typer.Option(100, "--capacity", help="Capacity in GB"),
+):
+    """Create a new storage pool."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    payload = {
+        "name": name,
+        "type": type,
+        "target_path": path,
+        "host_id": host_id,
+        "capacity_gb": capacity_gb,
+        "autostart": True
+    }
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.post(f"{base_url}/redfish/v1/Oem/HawkFish/Storage/Pools", json=payload, headers=headers)
+            if r.status_code == 200:
+                pool = r.json()
+                typer.echo(f"✓ Created storage pool: {pool['Name']} ({pool['CapacityGB']} GB)")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.group()
+def volumes():
+    """Storage volume management."""
+    pass
+
+
+@volumes.command("ls")
+def volumes_list(
+    pool_id: str = typer.Option(None, "--pool", help="Filter by pool ID"),
+    project_id: str = typer.Option(None, "--project", help="Filter by project ID"),
+):
+    """List storage volumes."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    params = {}
+    if pool_id:
+        params["pool_id"] = pool_id
+    if project_id:
+        params["project_id"] = project_id
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.get(f"{base_url}/redfish/v1/Oem/HawkFish/Storage/Volumes", params=params, headers=headers)
+            if r.status_code != 200:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+            
+            data = r.json()
+            volumes = data.get("Members", [])
+            
+            if not volumes:
+                typer.echo("No storage volumes found")
+                return
+            
+            for volume in volumes:
+                capacity = volume.get("CapacityGB", 0)
+                allocated = volume.get("AllocatedGB", 0)
+                
+                typer.echo(f"• {volume['Id']}: {volume['Name']} ({volume['Format']})")
+                typer.echo(f"  Pool: {volume['PoolId']}")
+                typer.echo(f"  Project: {volume['ProjectId']}")
+                typer.echo(f"  Capacity: {allocated}/{capacity} GB")
+                typer.echo(f"  State: {volume['State']}")
+                if volume.get("AttachedTo"):
+                    typer.echo(f"  Attached to: {volume['AttachedTo']}")
+                typer.echo()
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@volumes.command("create")
+def volumes_create(
+    name: str = typer.Argument(..., help="Volume name"),
+    pool_id: str = typer.Option(..., "--pool", help="Pool ID"),
+    capacity_gb: int = typer.Option(..., "--capacity", help="Capacity in GB"),
+    format: str = typer.Option("qcow2", "--format", help="Volume format (qcow2, raw)"),
+    project_id: str = typer.Option("default", "--project", help="Project ID"),
+):
+    """Create a new storage volume."""
+    cfg = load_config()
+    base_url = cfg.get("base_url", "http://localhost:8080")
+    token = cfg.get("token")
+    
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    payload = {
+        "name": name,
+        "pool_id": pool_id,
+        "capacity_gb": capacity_gb,
+        "format": format,
+        "project_id": project_id
+    }
+    
+    try:
+        with httpx.Client(verify=False) as client:
+            r = client.post(f"{base_url}/redfish/v1/Oem/HawkFish/Storage/Volumes", json=payload, headers=headers)
+            if r.status_code == 200:
+                volume = r.json()
+                typer.echo(f"✓ Created volume: {volume['Name']} ({volume['CapacityGB']} GB)")
+            else:
+                typer.echo(f"Error: {r.status_code} {r.text}", err=True)
+                raise typer.Exit(code=1)
+    
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 def main() -> None:
     app()
 
