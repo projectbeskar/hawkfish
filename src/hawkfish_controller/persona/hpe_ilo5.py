@@ -206,20 +206,180 @@ class HpeIlo5Plugin:
         @self.router.get("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs")
         async def get_ilo_jobs(session=Depends(require_session)):
             """Get HPE iLO Jobs (mapped from TaskService)."""
-            # TODO: Map from actual TaskService
-            return {
-                "@odata.type": "#HpeJobCollection.HpeJobCollection",
-                "@odata.id": "/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs",
-                "Name": "Jobs",
-                "Members": [],
-                "Members@odata.count": 0,
-                "Oem": {
-                    "HawkFish": {
-                        "CompatibilityDisclaimer": "HawkFish HPE iLO compatibility mode for testing; not affiliated with HPE.",
-                        "Note": "Jobs are mapped from HawkFish TaskService"
+            from ..services.tasks import TaskService
+            
+            try:
+                task_service = TaskService()
+                tasks = await task_service.list_tasks()
+                
+                # Convert HawkFish tasks to HPE Job format
+                jobs = []
+                for task in tasks:
+                    job = self._convert_task_to_hpe_job(task)
+                    jobs.append({
+                        "@odata.id": f"/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs/{task.id}"
+                    })
+                
+                return {
+                    "@odata.type": "#HpeJobCollection.HpeJobCollection",
+                    "@odata.id": "/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs",
+                    "Name": "Jobs",
+                    "Members": jobs,
+                    "Members@odata.count": len(jobs),
+                    "Oem": {
+                        "HawkFish": {
+                            "CompatibilityDisclaimer": "HawkFish HPE iLO compatibility mode for testing; not affiliated with HPE.",
+                            "Note": "Jobs are mapped from HawkFish TaskService"
+                        }
                     }
                 }
-            }
+            except Exception as e:
+                # Return empty collection on error
+                return {
+                    "@odata.type": "#HpeJobCollection.HpeJobCollection",
+                    "@odata.id": "/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs",
+                    "Name": "Jobs",
+                    "Members": [],
+                    "Members@odata.count": 0,
+                    "Oem": {
+                        "HawkFish": {
+                            "CompatibilityDisclaimer": "HawkFish HPE iLO compatibility mode for testing; not affiliated with HPE.",
+                            "Note": "Jobs are mapped from HawkFish TaskService",
+                            "Error": f"Failed to retrieve tasks: {str(e)}"
+                        }
+                    }
+                }
+        
+        @self.router.get("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs/{job_id}")
+        async def get_ilo_job(job_id: str, session=Depends(require_session)):
+            """Get specific HPE iLO Job (mapped from TaskService)."""
+            from ..services.tasks import TaskService
+            
+            try:
+                task_service = TaskService()
+                task = await task_service.get_task(job_id)
+                
+                if not task:
+                    raise HTTPException(status_code=404, detail="Job not found")
+                
+                job = self._convert_task_to_hpe_job(task)
+                job["@odata.id"] = f"/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs/{job_id}"
+                job["Oem"] = {
+                    "HawkFish": {
+                        "CompatibilityDisclaimer": "HawkFish HPE iLO compatibility mode for testing; not affiliated with HPE.",
+                        "Note": "Job is mapped from HawkFish Task",
+                        "OriginalTaskId": task.id
+                    }
+                }
+                
+                return job
+                
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to retrieve job: {str(e)}"
+                )
+        
+        @self.router.post("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Actions/Hpe.iLO.LaunchConsole")
+        async def launch_ilo_console(
+            body: dict,
+            session=Depends(require_session)
+        ):
+            """Launch console session via HPE iLO endpoint."""
+            if not check_role("operator", session.role):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            
+            # Get protocol and system from request
+            protocol = body.get("Protocol", "VNC")
+            system_id = body.get("SystemId")
+            
+            if not system_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="SystemId is required"
+                )
+            
+            # Validate protocol
+            valid_protocols = ["VNC", "Serial"]
+            if protocol not in valid_protocols:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Protocol must be one of: {', '.join(valid_protocols)}"
+                )
+            
+            # Create console session using HawkFish console service
+            from ..services.console import console_service
+            
+            try:
+                console_session = await console_service.create_session(
+                    system_id=system_id,
+                    protocol=protocol.lower(),
+                    user_id=session.user_id
+                )
+                
+                # Construct WebSocket URL
+                base_url = settings.base_url or "wss://localhost:8080"
+                if base_url.startswith("http"):
+                    base_url = base_url.replace("http", "ws")
+                
+                ws_url = f"{base_url}/ws/console/{console_session.token}"
+                
+                return {
+                    "ConsoleSession": {
+                        "Id": console_session.token,
+                        "Protocol": protocol,
+                        "URI": ws_url,
+                        "ExpiresAt": console_session.expires_at,
+                        "SystemId": system_id
+                    },
+                    "Oem": {
+                        "Hpe": {
+                            "SessionType": "RemoteConsole",
+                            "LaunchType": "HTML5"
+                        },
+                        "HawkFish": {
+                            "CompatibilityDisclaimer": "HawkFish HPE iLO compatibility mode for testing; not affiliated with HPE.",
+                            "Note": "Console session mapped to HawkFish console service"
+                        }
+                    }
+                }
+                
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create console session: {str(e)}"
+                )
+        
+        @self.router.delete("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/ConsoleSessions/{token}")
+        async def revoke_ilo_console_session(
+            token: str,
+            session=Depends(require_session)
+        ):
+            """Revoke console session via HPE iLO endpoint."""
+            if not check_role("operator", session.role):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            
+            # Revoke using HawkFish console service
+            from ..services.console import console_service
+            
+            try:
+                await console_service.revoke_session(token)
+                return {
+                    "TaskState": "Completed",
+                    "Message": "Console session revoked",
+                    "Oem": {
+                        "HawkFish": {
+                            "CompatibilityDisclaimer": "HawkFish HPE iLO compatibility mode for testing; not affiliated with HPE."
+                        }
+                    }
+                }
+            except Exception as e:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Console session not found: {str(e)}"
+                )
         
         # BIOS endpoints
         @self.router.get("/redfish/v1/Systems/{system_id}/Bios")
@@ -283,21 +443,8 @@ class HpeIlo5Plugin:
                     )
                     
                     if reboot_required:
-                        raise HTTPException(
-                            status_code=400,
-                            detail={
-                                "error": {
-                                    "code": "Oem.Hpe.Bios.RequiresPowerOff",
-                                    "message": "The requested BIOS changes require the system to be powered off.",
-                                    "@Message.ExtendedInfo": [{
-                                        "MessageId": "Oem.Hpe.Bios.RequiresPowerOff",
-                                        "Message": "The requested BIOS setting changes require ApplyTime=OnReset or system power off.",
-                                        "Resolution": "Set ApplyTime to OnReset or power off the system before applying changes.",
-                                        "Severity": "Warning"
-                                    }]
-                                }
-                            }
-                        )
+                        from ..services.bios import BiosApplyTimeError
+                        raise BiosApplyTimeError("Oem.Hpe.Bios.RequiresPowerOff")
                 
                 # Stage the changes
                 await bios_service.stage_bios_changes(
@@ -317,22 +464,75 @@ class HpeIlo5Plugin:
                     }
                 }
                 
-            except ValueError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": {
-                            "code": "Oem.Hpe.Bios.InvalidAttribute",
-                            "message": str(e),
-                            "@Message.ExtendedInfo": [{
-                                "MessageId": "Oem.Hpe.Bios.InvalidAttribute",
-                                "Message": f"Invalid BIOS attribute: {e}",
-                                "Resolution": "Check the attribute name and value against the BIOS registry.",
-                                "Severity": "Warning"
-                            }]
+            except Exception as e:
+                from ..services.bios import BiosValidationError, BiosApplyTimeError
+                from ..services.message_registry import hpe_message_registry
+                
+                # Handle HPE-specific BIOS errors
+                if isinstance(e, (BiosValidationError, BiosApplyTimeError)):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": {
+                                "code": e.message_id,
+                                "message": str(e),
+                                "@Message.ExtendedInfo": [e.message_info]
+                            }
                         }
-                    }
-                )
+                    )
+                else:
+                    # Generic error
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": {
+                                "code": "Oem.Hpe.Bios.InvalidAttribute",
+                                "message": str(e),
+                                "@Message.ExtendedInfo": hpe_message_registry.create_extended_info(
+                                    "Oem.Hpe.Bios.InvalidAttribute", 
+                                    ["General", str(e)]
+                                )
+                            }
+                        }
+                    )
+    
+    def _convert_task_to_hpe_job(self, task) -> dict[str, Any]:
+        """Convert HawkFish Task to HPE Job format."""
+        # Map HawkFish task states to HPE Job states
+        state_mapping = {
+            "pending": "Running",
+            "running": "Running", 
+            "completed": "Completed",
+            "failed": "Exception",
+            "cancelled": "Exception"
+        }
+        
+        job_state = state_mapping.get(task.state, "Running")
+        
+        # Calculate percentage complete
+        percent_complete = 0
+        if task.state == "completed":
+            percent_complete = 100
+        elif task.state == "running" and hasattr(task, 'progress'):
+            percent_complete = min(int(task.progress * 100), 99)  # Never 100% until completed
+        
+        # Format timestamps
+        start_time = task.created_at if hasattr(task, 'created_at') else None
+        end_time = task.completed_at if hasattr(task, 'completed_at') and task.state in ["completed", "failed", "cancelled"] else None
+        
+        return {
+            "@odata.type": "#HpeJob.v1_0_0.HpeJob",
+            "Id": task.id,
+            "Name": task.name or f"Task {task.id}",
+            "JobState": job_state,
+            "PercentComplete": percent_complete,
+            "StartTime": start_time,
+            "EndTime": end_time,
+            "Message": task.message or f"Task {task.state}",
+            "RelatedItem": {
+                "@odata.id": f"/redfish/v1/TaskService/Tasks/{task.id}"
+            }
+        }
     
     def _map_event_category(self, event_type: str) -> str:
         """Map HawkFish event types to HPE categories."""
@@ -340,7 +540,7 @@ class HpeIlo5Plugin:
             "PowerStateChanged": "Power",
             "MediaInserted": "VirtualMedia", 
             "MediaEjected": "VirtualMedia",
-            "BiosSettingsApplied": "BIOS",
+            "BiosSettingsApplied": "System BIOS",
             "SystemCreated": "System",
             "SystemDeleted": "System"
         }

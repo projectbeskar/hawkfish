@@ -121,6 +121,17 @@ class ProjectStore:
                 )
             """)
             
+            # BIOS applied settings history
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hf_bios_applied (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    system_id TEXT NOT NULL,
+                    attributes TEXT NOT NULL,
+                    applied_at TEXT NOT NULL,
+                    applied_by TEXT
+                )
+            """)
+            
             # Create default project if it doesn't exist
             await db.execute("""
                 INSERT OR IGNORE INTO hf_projects (id, name, description, created_at, labels, quotas)

@@ -1,0 +1,233 @@
+{
+  "ProfileName": "HawkFish HPE iLO5 Compatibility Profile",
+  "ProfileVersion": "1.0.0",
+  "Description": "Redfish interoperability profile for HawkFish HPE iLO5 persona compatibility mode",
+  "ContactInfo": "HawkFish Project",
+  "RequiredProfiles": {},
+  "RegistryPrefix": "HawkFish",
+  "RequiredSchemas": {
+    "Manager": {
+      "MinVersion": "1.10.0",
+      "Repository": "http://redfish.dmtf.org/schemas/v1",
+      "ReadRequirement": "Mandatory",
+      "WriteRequirement": "None",
+      "ConditionalRequirements": [
+        {
+          "Purpose": "HPE iLO Manager identity",
+          "CompareProperty": "Id",
+          "CompareValues": ["iLO.Embedded.1"],
+          "ReadRequirement": "Mandatory"
+        }
+      ],
+      "PropertyRequirements": {
+        "Id": {"ReadRequirement": "Mandatory"},
+        "Name": {"ReadRequirement": "Mandatory"},
+        "ManagerType": {"ReadRequirement": "Mandatory"},
+        "Manufacturer": {"ReadRequirement": "Mandatory"},
+        "Model": {"ReadRequirement": "Mandatory"},
+        "FirmwareVersion": {"ReadRequirement": "Mandatory"},
+        "Status": {"ReadRequirement": "Mandatory"},
+        "Links": {"ReadRequirement": "Mandatory"},
+        "Oem": {
+          "ReadRequirement": "Mandatory",
+          "Purpose": "Compatibility disclaimer required"
+        }
+      }
+    },
+    "VirtualMedia": {
+      "MinVersion": "1.3.0",
+      "Repository": "http://redfish.dmtf.org/schemas/v1",
+      "ReadRequirement": "Mandatory",
+      "WriteRequirement": "None",
+      "ConditionalRequirements": [
+        {
+          "Purpose": "HPE iLO VirtualMedia CD",
+          "CompareProperty": "Id",
+          "CompareValues": ["CD1"],
+          "ReadRequirement": "Mandatory"
+        }
+      ],
+      "PropertyRequirements": {
+        "Id": {"ReadRequirement": "Mandatory"},
+        "Name": {"ReadRequirement": "Mandatory"},
+        "MediaTypes": {"ReadRequirement": "Mandatory"},
+        "Inserted": {"ReadRequirement": "Mandatory"},
+        "WriteProtected": {"ReadRequirement": "Mandatory"},
+        "ConnectedVia": {"ReadRequirement": "Mandatory"},
+        "Actions": {"ReadRequirement": "Mandatory"}
+      },
+      "ActionRequirements": {
+        "VirtualMedia.InsertMedia": {
+          "ReadRequirement": "Mandatory",
+          "Purpose": "Media insertion capability"
+        },
+        "VirtualMedia.EjectMedia": {
+          "ReadRequirement": "Mandatory", 
+          "Purpose": "Media ejection capability"
+        }
+      }
+    },
+    "ComputerSystem": {
+      "MinVersion": "1.17.0",
+      "Repository": "http://redfish.dmtf.org/schemas/v1",
+      "ReadRequirement": "Mandatory",
+      "WriteRequirement": "Supported",
+      "PropertyRequirements": {
+        "Id": {"ReadRequirement": "Mandatory"},
+        "Name": {"ReadRequirement": "Mandatory"},
+        "PowerState": {"ReadRequirement": "Mandatory"},
+        "ProcessorSummary": {"ReadRequirement": "Mandatory"},
+        "MemorySummary": {"ReadRequirement": "Mandatory"},
+        "Links": {"ReadRequirement": "Mandatory"}
+      },
+      "ActionRequirements": {
+        "ComputerSystem.Reset": {
+          "ReadRequirement": "Mandatory",
+          "WriteRequirement": "Mandatory",
+          "Purpose": "System power control"
+        }
+      }
+    },
+    "Bios": {
+      "MinVersion": "1.1.0",
+      "Repository": "http://redfish.dmtf.org/schemas/v1",
+      "ReadRequirement": "Mandatory",
+      "WriteRequirement": "Supported",
+      "PropertyRequirements": {
+        "Id": {"ReadRequirement": "Mandatory"},
+        "Name": {"ReadRequirement": "Mandatory"},
+        "AttributeRegistry": {"ReadRequirement": "Mandatory"},
+        "Attributes": {"ReadRequirement": "Mandatory"},
+        "Links": {"ReadRequirement": "Mandatory"},
+        "Oem": {
+          "ReadRequirement": "Mandatory",
+          "Purpose": "HPE-specific BIOS extensions"
+        }
+      }
+    }
+  },
+  "Protocol": {
+    "HostInterface": {
+      "HostInterfaceType": "NetworkHostInterface",
+      "HostEthernetNIC": {
+        "MACAddress": null,
+        "VLAN": {
+          "VLANEnable": false,
+          "VLANId": null
+        }
+      }
+    },
+    "ServiceEntryPointURI": "/redfish/v1/",
+    "MinHTTPSPort": 443,
+    "MaxHTTPSPort": 65535,
+    "ExpandQuery": {
+      "Expandable": true,
+      "MaxLevels": 6,
+      "NoLinks": true,
+      "Links": true
+    },
+    "SelectQuery": {
+      "Selectability": true,
+      "SelectableProperties": ["*"]
+    },
+    "FilterQuery": {
+      "Filterability": false
+    }
+  },
+  "SupportedSystems": {
+    "VirtualMachines": {
+      "Purpose": "KVM/QEMU virtual machines via libvirt",
+      "PowerControl": ["On", "ForceOff", "GracefulShutdown", "ForceRestart"],
+      "VirtualMedia": ["CD", "DVD"],
+      "BIOS": {
+        "SupportedAttributes": ["BootMode", "SecureBoot", "PersistentBootConfigOrder"],
+        "ApplyTimeSupport": ["OnReset", "Immediate"]
+      }
+    }
+  },
+  "HPECompatibilityExtensions": {
+    "Endpoints": {
+      "/redfish/v1/Managers/iLO.Embedded.1": {
+        "Purpose": "HPE iLO Manager identity",
+        "Methods": ["GET"],
+        "HPESpecific": true
+      },
+      "/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia": {
+        "Purpose": "HPE VirtualMedia collection",
+        "Methods": ["GET"],
+        "HPESpecific": true
+      },
+      "/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1": {
+        "Purpose": "HPE CD VirtualMedia resource",
+        "Methods": ["GET"],
+        "HPESpecific": true
+      },
+      "/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia": {
+        "Purpose": "HPE media insertion",
+        "Methods": ["POST"],
+        "HPESpecific": true
+      },
+      "/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1/Actions/VirtualMedia.EjectMedia": {
+        "Purpose": "HPE media ejection",
+        "Methods": ["POST"],
+        "HPESpecific": true
+      },
+      "/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs": {
+        "Purpose": "HPE Jobs collection",
+        "Methods": ["GET"],
+        "HPESpecific": true
+      },
+      "/redfish/v1/Systems/{SystemId}/Bios": {
+        "Purpose": "BIOS current settings with HPE extensions",
+        "Methods": ["GET"],
+        "HPESpecific": false,
+        "HPEExtensions": ["Oem.Hpe.PendingChanges"]
+      },
+      "/redfish/v1/Systems/{SystemId}/Bios/Settings": {
+        "Purpose": "BIOS settings with HPE ApplyTime",
+        "Methods": ["PATCH"],
+        "HPESpecific": false,
+        "HPEExtensions": ["Oem.Hpe.ApplyTime"]
+      }
+    },
+    "MessageRegistry": {
+      "Oem.Hpe.Bios.InvalidAttribute": "Invalid BIOS attribute value",
+      "Oem.Hpe.Bios.RequiresPowerOff": "Change requires system power off",
+      "Oem.Hpe.Bios.RequiresUefiForSecureBoot": "SecureBoot requires UEFI mode",
+      "Oem.Hpe.Bios.TemplateUnavailable": "UEFI template unavailable",
+      "Oem.Hpe.Media.DeviceUnavailable": "Virtual media device unavailable"
+    },
+    "EventCategories": {
+      "Power": "Power state changes",
+      "VirtualMedia": "Virtual media operations", 
+      "System BIOS": "BIOS configuration changes",
+      "System": "System lifecycle events",
+      "General": "Other events"
+    }
+  },
+  "Disclaimers": {
+    "Compatibility": "This profile describes HawkFish HPE iLO compatibility mode for testing purposes only. HawkFish is not affiliated with or endorsed by HPE.",
+    "TrademarkNotice": "HPE and iLO are trademarks of Hewlett Packard Enterprise. Use in this profile is for compatibility identification only.",
+    "SupportNotice": "For support with HawkFish compatibility features, contact the HawkFish project maintainers, not HPE."
+  },
+  "TestingGuidelines": {
+    "Prerequisites": [
+      "Set HF_TEST_PERSONA=hpe_ilo5 environment variable",
+      "Configure test system with hpe_ilo5 persona",
+      "Ensure operator-level authentication"
+    ],
+    "CoreFlows": [
+      "Manager identity verification",
+      "VirtualMedia insert/eject cycle",
+      "Power state operations",
+      "BIOS staging and application",
+      "Error message validation"
+    ],
+    "ValidationPoints": [
+      "All responses include compatibility disclaimers",
+      "HPE-specific OEM blocks present where required",
+      "Error messages use HPE message IDs",
+      "Event adaptation includes HPE categories"
+    ]
+  }
+}

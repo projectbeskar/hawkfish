@@ -326,21 +326,85 @@ hawkfish events subscribe \
   --secret mysecret
 ```
 
+## Coverage Matrix
+
+### HPE iLO5 Endpoint Support
+
+| Endpoint | Method | Status | Notes |
+|----------|---------|---------|-------|
+| `/redfish/v1/Managers/iLO.Embedded.1` | GET | ✅ Complete | Manager identity with HPE branding |
+| `/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia` | GET | ✅ Complete | VirtualMedia collection |
+| `/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1` | GET | ✅ Complete | CD VirtualMedia resource |
+| `/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia` | POST | ✅ Complete | Media insertion with validation |
+| `/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1/Actions/VirtualMedia.EjectMedia` | POST | ✅ Complete | Media ejection |
+| `/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs` | GET | ✅ Complete | Jobs collection (TaskService mapping) |
+| `/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs/{id}` | GET | ✅ Complete | Individual job details |
+| `/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Actions/Hpe.iLO.LaunchConsole` | POST | ✅ Complete | Console session creation |
+| `/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/ConsoleSessions/{token}` | DELETE | ✅ Complete | Console session revocation |
+| `/redfish/v1/Systems/{id}/Bios` | GET | ✅ Complete | BIOS current + pending state |
+| `/redfish/v1/Systems/{id}/Bios/Settings` | PATCH | ✅ Complete | BIOS staging with ApplyTime |
+
+### BIOS Attribute Support
+
+| Attribute | Read | Write | ApplyTime | Validation |
+|-----------|------|-------|-----------|------------|
+| `BootMode` | ✅ | ✅ | OnReset/Immediate | Uefi/LegacyBios |
+| `SecureBoot` | ✅ | ✅ | OnReset | Enabled/Disabled (UEFI only) |
+| `PersistentBootConfigOrder` | ✅ | ✅ | OnReset/Immediate | Device list validation |
+
+### Job/Task Mapping
+
+| HPE Job Field | HawkFish Task Field | Status |
+|---------------|---------------------|---------|
+| `Id` | `id` | ✅ |
+| `Name` | `name` | ✅ |
+| `JobState` | `state` (mapped) | ✅ |
+| `PercentComplete` | `progress` | ✅ |
+| `StartTime` | `created_at` | ✅ |
+| `EndTime` | `completed_at` | ✅ |
+| `Message` | `message` | ✅ |
+| `RelatedItem` | TaskService link | ✅ |
+
+### Event Adaptation Support
+
+| Core Event | HPE Category | HPE EventID | Status |
+|------------|--------------|-------------|---------|
+| `PowerStateChanged` | Power | Generated | ✅ |
+| `MediaInserted` | VirtualMedia | Generated | ✅ |
+| `MediaEjected` | VirtualMedia | Generated | ✅ |
+| `BiosSettingsApplied` | System BIOS | Generated | ✅ |
+| `SystemCreated` | System | Generated | ✅ |
+| `SystemDeleted` | System | Generated | ✅ |
+
+### Message Registry Coverage
+
+| Message ID | Purpose | Args | Status |
+|------------|---------|------|---------|
+| `Oem.Hpe.Bios.InvalidAttribute` | Invalid BIOS value | attribute, value | ✅ |
+| `Oem.Hpe.Bios.RequiresPowerOff` | ApplyTime validation | none | ✅ |
+| `Oem.Hpe.Bios.RequiresUefiForSecureBoot` | SecureBoot constraint | none | ✅ |
+| `Oem.Hpe.Bios.TemplateUnavailable` | UEFI template missing | none | ✅ |
+| `Oem.Hpe.Media.DeviceUnavailable` | Media device error | device | ✅ |
+| `Oem.Hpe.Console.SessionLimitExceeded` | Console limit | limit | ✅ |
+| `Oem.Hpe.Console.ProtocolNotSupported` | Protocol error | protocol | ✅ |
+| `Oem.Hpe.General.Conflict` | Resource conflict | resource | ✅ |
+
 ## Limitations
 
 ### Current Implementation
 
-- **Mock BIOS Changes**: Actual libvirt firmware switching not implemented
-- **Simplified SecureBoot**: OVMF varstore management needs integration
-- **Limited Jobs**: Basic TaskService mapping only
+- **Simulated BIOS**: BIOS changes are staged but not applied to actual libvirt firmware
+- **Console Framework**: Console endpoints return tokens but require WebSocket proxy implementation  
+- **Job Mapping**: Basic TaskService mapping without HPE-specific job types
 
 ### Future Enhancements
 
-- Full libvirt firmware integration
-- OVMF secure boot varstore management  
-- Enhanced job progress mapping
-- Additional BIOS attributes
-- Boot order enforcement
+- Full libvirt firmware integration (OVMF/SeaBIOS switching)
+- OVMF secure boot varstore management
+- WebSocket console proxy implementation
+- Enhanced job progress mapping with HPE semantics
+- Additional BIOS attributes (PCI slots, memory settings)
+- Boot order enforcement in libvirt domain XML
 
 ## Security Considerations
 
