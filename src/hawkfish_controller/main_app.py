@@ -14,6 +14,7 @@ from .api.images import router as images_router
 from .api.import_adopt import router as import_router
 from .api.ipxe import router as ipxe_router
 from .api.managers import router as managers_router
+from .api.migration import router as migration_router
 from .api.netprofiles import router as netprofiles_router
 from .api.orchestrator import router as orchestrator_router
 from .api.persona import router as persona_router
@@ -31,6 +32,7 @@ from .middleware import MetricsLoggingMiddleware
 from .rate_limit import RateLimitMiddleware
 from .persona.registry import persona_registry
 from .persona.hpe_ilo5 import hpe_ilo5_plugin
+from .persona.dell_idrac9 import dell_idrac9_plugin
 
 
 def create_app() -> FastAPI:
@@ -76,6 +78,7 @@ def create_app() -> FastAPI:
 
     # Register and mount persona plugins
     persona_registry.register_plugin(hpe_ilo5_plugin)
+    persona_registry.register_plugin(dell_idrac9_plugin)
     persona_registry.mount_all(app)
 
     app.include_router(service_root_router)
@@ -91,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(ipxe_router)
     app.include_router(import_router)
     app.include_router(hosts_router)
+    app.include_router(migration_router)
     app.include_router(images_router)
     app.include_router(netprofiles_router)
     app.include_router(update_service_router)
