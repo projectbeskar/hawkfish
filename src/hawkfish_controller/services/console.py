@@ -49,7 +49,9 @@ class ConsoleService:
                     user_id TEXT NOT NULL,
                     created_at REAL NOT NULL,
                     expires_at REAL NOT NULL,
-                    is_active BOOLEAN DEFAULT FALSE
+                    is_active BOOLEAN DEFAULT FALSE,
+                    used BOOLEAN DEFAULT FALSE,
+                    used_at REAL
                 )
             """)
             await db.commit()

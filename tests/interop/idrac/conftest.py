@@ -1,0 +1,95 @@
+"""
+Pytest fixtures for Dell iDRAC interoperability tests.
+"""
+
+import os
+import pytest
+from fastapi.testclient import TestClient
+
+from src.hawkfish_controller.main_app import create_app
+from src.hawkfish_controller.api.sessions import global_session_store
+from src.hawkfish_controller.services.sessions import Session
+from src.hawkfish_controller.drivers.fake_driver import FakeDriver
+
+
+@pytest.fixture
+def client():
+    """Create test client with Dell persona enabled."""
+    app = create_app()
+    
+    # Override the libvirt driver with fake driver
+    def get_fake_driver():
+        return FakeDriver()
+    
+    app.dependency_overrides[get_fake_driver] = get_fake_driver
+    
+    return TestClient(app)
+
+
+@pytest.fixture
+def admin_session():
+    """Create admin session for testing."""
+    session = Session("test-admin", "admin", "test-admin-token")
+    global_session_store.sessions["test-admin-token"] = session
+    return session
+
+
+@pytest.fixture
+def operator_session():
+    """Create operator session for testing."""
+    session = Session("test-operator", "operator", "test-operator-token")
+    global_session_store.sessions["test-operator-token"] = session
+    return session
+
+
+@pytest.fixture
+def admin_headers(admin_session):
+    """Get headers for admin authentication."""
+    return {"X-Auth-Token": admin_session.token}
+
+
+@pytest.fixture
+def operator_headers(operator_session):
+    """Get headers for operator authentication."""
+    return {"X-Auth-Token": operator_session.token}
+
+
+@pytest.fixture
+def test_system_id():
+    """Standard test system ID."""
+    return "test-vm-001"
+
+
+@pytest.fixture
+def idrac_enabled():
+    """Check if iDRAC persona testing is enabled."""
+    return os.environ.get("HF_TEST_PERSONA", "").lower() == "dell_idrac9"
+
+
+@pytest.fixture
+def skip_if_idrac_disabled(idrac_enabled):
+    """Skip test if iDRAC persona testing is not enabled."""
+    if not idrac_enabled:
+        pytest.skip("Dell iDRAC persona testing not enabled (set HF_TEST_PERSONA=dell_idrac9)")
+
+
+@pytest.fixture(autouse=True)
+def setup_test_persona(client, admin_headers, test_system_id):
+    """Set up test system with Dell iDRAC9 persona."""
+    # Set the system persona to dell_idrac9 for testing
+    response = client.patch(
+        f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
+        json={"persona": "dell_idrac9"},
+        headers=admin_headers
+    )
+    # Don't fail if persona setting fails in setup
+    yield
+    
+    # Cleanup - remove persona override
+    try:
+        client.delete(
+            f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
+            headers=admin_headers
+        )
+    except:
+        pass  # Ignore cleanup failures

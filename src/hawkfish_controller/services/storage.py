@@ -49,11 +49,20 @@ class StorageVolume:
 
 
 class StorageService:
-    """Service for managing storage pools and volumes."""
+    """Service for managing storage pools and volumes with libvirt integration."""
     
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or f"{settings.state_dir}/hawkfish.db"
         self._initialized = False
+        
+        # Supported pool types
+        self.supported_pool_types = {
+            "dir": "Directory-based storage pool",
+            "nfs": "NFS network storage pool", 
+            "netfs": "Network filesystem pool",
+            "iscsi": "iSCSI storage pool",
+            "logical": "LVM logical volume pool"
+        }
     
     async def init(self) -> None:
         """Initialize storage tables."""
