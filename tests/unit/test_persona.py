@@ -64,7 +64,7 @@ class TestPersonaAPI:
             expires_at=now + 3600,  # 1 hour
             last_activity=now
         )
-        global_session_store.sessions["test-token"] = session
+        global_session_store._token_to_session["test-token"] = session
         
         response = client.get("/redfish/v1/Oem/HawkFish/Personas", headers=auth_headers)
         assert response.status_code == 200
@@ -93,7 +93,7 @@ class TestPersonaAPI:
             expires_at=now + 3600,  # 1 hour
             last_activity=now
         )
-        global_session_store.sessions["test-token"] = session
+        global_session_store._token_to_session["test-token"] = session
         
         # Test generic persona
         response = client.get("/redfish/v1/Oem/HawkFish/Personas/generic", headers=auth_headers)
@@ -140,7 +140,7 @@ class TestHpeIlo5Plugin:
             expires_at=now + 3600,  # 1 hour
             last_activity=now
         )
-        global_session_store.sessions["test-token"] = session
+        global_session_store._token_to_session["test-token"] = session
         
         response = client.get("/redfish/v1/Managers/iLO.Embedded.1", headers=auth_headers)
         assert response.status_code == 200
@@ -169,7 +169,7 @@ class TestHpeIlo5Plugin:
             expires_at=now + 3600,  # 1 hour
             last_activity=now
         )
-        global_session_store.sessions["test-token"] = session
+        global_session_store._token_to_session["test-token"] = session
         
         response = client.get("/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia", headers=auth_headers)
         assert response.status_code == 200
@@ -194,7 +194,7 @@ class TestHpeIlo5Plugin:
             expires_at=now + 3600,  # 1 hour
             last_activity=now
         )
-        global_session_store.sessions["test-token"] = session
+        global_session_store._token_to_session["test-token"] = session
         
         response = client.get("/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1", headers=auth_headers)
         assert response.status_code == 200
@@ -258,7 +258,6 @@ class TestBiosService:
     
     async def _setup_test_db(self):
         """Set up test database for BIOS service."""
-        import tempfile
         from hawkfish_controller.config import settings
         from hawkfish_controller.services.projects import project_store
         
@@ -268,8 +267,19 @@ class TestBiosService:
         # Set the state directory to temp directory  
         settings.state_dir = self._tmp_dir
         
+        # Ensure the directory exists
+        import os
+        os.makedirs(self._tmp_dir, exist_ok=True)
+        
+        # Update project store to use the temp directory
+        project_store.db_path = os.path.join(self._tmp_dir, "hawkfish.db")
+        
         # Initialize database tables
         await project_store.init()
+        
+        # Also update the bios service to use the same database
+        from hawkfish_controller.services.bios import bios_service
+        bios_service.db_path = os.path.join(self._tmp_dir, "hawkfish.db")
     
     @pytest.mark.asyncio
     async def test_get_default_bios_attributes(self):

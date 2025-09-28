@@ -51,10 +51,17 @@ def test_e2e_power_boot_media_flow(tmp_path: Path):
     import asyncio
     from hawkfish_controller.services.projects import project_store
     
+    # Update project store to use the temp directory
+    project_store.db_path = str(state_dir / "hawkfish.db")
+    
     async def init_test_db():
         await project_store.init()
     
     asyncio.run(init_test_db())
+    
+    # Also update the bios service to use the same database
+    from hawkfish_controller.services.bios import bios_service
+    bios_service.db_path = str(state_dir / "hawkfish.db")
     
     app = create_app()
     fake = FakeDriver()

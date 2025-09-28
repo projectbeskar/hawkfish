@@ -41,7 +41,7 @@ def admin_session():
         expires_at=now + 3600,  # 1 hour
         last_activity=now
     )
-    global_session_store.sessions["test-admin-token"] = session
+    global_session_store._token_to_session["test-admin-token"] = session
     return session
 
 
@@ -58,7 +58,7 @@ def operator_session():
         expires_at=now + 3600,  # 1 hour
         last_activity=now
     )
-    global_session_store.sessions["test-operator-token"] = session
+    global_session_store._token_to_session["test-operator-token"] = session
     return session
 
 
