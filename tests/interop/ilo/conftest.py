@@ -18,10 +18,12 @@ def client():
     app = create_app()
     
     # Override the libvirt driver with fake driver
+    from hawkfish_controller.drivers.libvirt_driver import get_driver
+    
     def get_fake_driver():
         return FakeDriver()
     
-    app.dependency_overrides[get_fake_driver] = get_fake_driver
+    app.dependency_overrides[get_driver] = get_fake_driver
     
     return TestClient(app)
 
