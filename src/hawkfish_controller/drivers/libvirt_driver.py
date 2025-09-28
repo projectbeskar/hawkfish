@@ -396,3 +396,9 @@ class LibvirtDriver:
             raise LibvirtError(f"Failed to delete snapshot: {exc}") from exc
 
 
+def get_driver() -> LibvirtDriver:
+    """Get default LibvirtDriver instance for dependency injection."""
+    from ..config import settings
+    return LibvirtDriver(getattr(settings, 'libvirt_uri', 'qemu:///system'))
+
+

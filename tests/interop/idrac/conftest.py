@@ -6,10 +6,10 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from src.hawkfish_controller.main_app import create_app
-from src.hawkfish_controller.api.sessions import global_session_store
-from src.hawkfish_controller.services.sessions import Session
-from src.hawkfish_controller.drivers.fake_driver import FakeDriver
+from hawkfish_controller.main_app import create_app
+from hawkfish_controller.api.sessions import global_session_store
+from hawkfish_controller.services.sessions import Session
+from hawkfish_controller.drivers.fake_driver import FakeDriver
 
 
 @pytest.fixture

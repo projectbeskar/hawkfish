@@ -128,8 +128,8 @@ class TestIloVirtualMediaFlow:
         
         # Test with viewer role (should fail)
         viewer_session = {"X-Auth-Token": "viewer-token"}
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         global_session_store.sessions["viewer-token"] = Session("viewer", "viewer", "viewer-token")
         

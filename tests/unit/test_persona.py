@@ -5,9 +5,9 @@ Tests for persona system functionality.
 import pytest
 from fastapi.testclient import TestClient
 
-from src.hawkfish_controller.main_app import create_app
-from src.hawkfish_controller.persona.registry import persona_registry
-from src.hawkfish_controller.services.persona import persona_service
+from hawkfish_controller.main_app import create_app
+from hawkfish_controller.persona.registry import persona_registry
+from hawkfish_controller.services.persona import persona_service
 
 
 class TestPersonaRegistry:
@@ -47,8 +47,8 @@ class TestPersonaAPI:
     def test_list_personas_endpoint(self, client, auth_headers):
         """Test persona list endpoint."""
         # Mock session
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         session = Session("test-user", "admin", "test-token")
         global_session_store.sessions["test-token"] = session
@@ -67,8 +67,8 @@ class TestPersonaAPI:
     
     def test_get_persona_info(self, client, auth_headers):
         """Test getting persona info."""
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         session = Session("test-user", "admin", "test-token")
         global_session_store.sessions["test-token"] = session
@@ -105,8 +105,8 @@ class TestHpeIlo5Plugin:
     
     def test_hpe_manager_endpoint(self, client, auth_headers):
         """Test HPE iLO Manager endpoint."""
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         session = Session("test-user", "admin", "test-token")
         global_session_store.sessions["test-token"] = session
@@ -125,8 +125,8 @@ class TestHpeIlo5Plugin:
     
     def test_hpe_virtual_media_collection(self, client, auth_headers):
         """Test HPE VirtualMedia collection endpoint."""
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         session = Session("test-user", "admin", "test-token")
         global_session_store.sessions["test-token"] = session
@@ -141,8 +141,8 @@ class TestHpeIlo5Plugin:
     
     def test_hpe_virtual_media_cd(self, client, auth_headers):
         """Test HPE VirtualMedia CD endpoint."""
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         session = Session("test-user", "admin", "test-token")
         global_session_store.sessions["test-token"] = session
@@ -161,7 +161,7 @@ class TestHpeIlo5Plugin:
     
     def test_event_adaptation(self):
         """Test event adaptation by HPE plugin."""
-        from src.hawkfish_controller.persona.hpe_ilo5 import hpe_ilo5_plugin
+        from hawkfish_controller.persona.hpe_ilo5 import hpe_ilo5_plugin
         
         core_event = {
             "EventType": "PowerStateChanged",
@@ -187,7 +187,7 @@ class TestHpeIlo5Plugin:
     
     def test_error_adaptation(self):
         """Test error adaptation by HPE plugin."""
-        from src.hawkfish_controller.persona.hpe_ilo5 import hpe_ilo5_plugin
+        from hawkfish_controller.persona.hpe_ilo5 import hpe_ilo5_plugin
         
         core_error = {
             "@Message.MessageId": "InvalidAttribute",
@@ -210,7 +210,7 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_get_default_bios_attributes(self):
         """Test getting default BIOS attributes."""
-        from src.hawkfish_controller.services.bios import bios_service
+        from hawkfish_controller.services.bios import bios_service
         
         attrs = await bios_service.get_current_bios_attributes("test-system")
         assert "BootMode" in attrs
@@ -224,7 +224,7 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_stage_bios_changes(self):
         """Test staging BIOS changes."""
-        from src.hawkfish_controller.services.bios import bios_service
+        from hawkfish_controller.services.bios import bios_service
         
         attributes = {
             "BootMode": "LegacyBios",
@@ -244,7 +244,7 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_bios_validation_secure_boot_requires_uefi(self):
         """Test that SecureBoot requires UEFI mode."""
-        from src.hawkfish_controller.services.bios import bios_service
+        from hawkfish_controller.services.bios import bios_service
         
         # Should raise error when trying to enable SecureBoot with LegacyBios
         attributes = {
@@ -262,7 +262,7 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_apply_pending_bios_changes(self):
         """Test applying pending BIOS changes."""
-        from src.hawkfish_controller.services.bios import bios_service
+        from hawkfish_controller.services.bios import bios_service
         
         # Stage some changes first
         attributes = {"BootMode": "LegacyBios"}

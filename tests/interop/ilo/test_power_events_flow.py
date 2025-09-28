@@ -106,7 +106,7 @@ class TestIloPowerEventsFlow:
         # event subscription and WebSocket testing
         
         # Get the persona registry to verify adaptation capability
-        from src.hawkfish_controller.persona.registry import persona_registry
+        from hawkfish_controller.persona.registry import persona_registry
         
         hpe_plugin = persona_registry.get_plugin("hpe_ilo5")
         assert hpe_plugin is not None
@@ -146,8 +146,8 @@ class TestIloPowerEventsFlow:
         assert response.status_code == 401  # Unauthorized
         
         # Test with viewer role (should fail)
-        from src.hawkfish_controller.api.sessions import global_session_store
-        from src.hawkfish_controller.services.sessions import Session
+        from hawkfish_controller.api.sessions import global_session_store
+        from hawkfish_controller.services.sessions import Session
         
         global_session_store.sessions["viewer-token"] = Session("viewer", "viewer", "viewer-token")
         viewer_headers = {"X-Auth-Token": "viewer-token"}
