@@ -95,7 +95,7 @@ class IloBiosWorkflow:
                     print(f"   Resolution: {extended_info.get('Resolution', 'No resolution provided')}")
                 else:
                     print(f"   Detail: {error_detail}")
-            except:
+            except Exception:
                 print(f"   Response: {e.response.text}")
             
             return False

@@ -77,7 +77,7 @@ def skip_if_idrac_disabled(idrac_enabled):
 def setup_test_persona(client, admin_headers, test_system_id):
     """Set up test system with Dell iDRAC9 persona."""
     # Set the system persona to dell_idrac9 for testing
-    response = client.patch(
+    client.patch(
         f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
         json={"persona": "dell_idrac9"},
         headers=admin_headers
@@ -91,5 +91,5 @@ def setup_test_persona(client, admin_headers, test_system_id):
             f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
             headers=admin_headers
         )
-    except:
+    except Exception:
         pass  # Ignore cleanup failures

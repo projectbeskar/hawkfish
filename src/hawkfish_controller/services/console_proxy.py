@@ -70,7 +70,7 @@ class ConsoleProxy:
             logger.error(f"Failed to establish console connection: {e}")
             try:
                 await websocket.close(code=4000, reason="Connection failed")
-            except:
+            except Exception:
                 pass
         finally:
             # Clean up connection
@@ -156,7 +156,7 @@ class ConsoleProxy:
             try:
                 await websocket.close(code=4004, reason="Idle timeout")
                 logger.info(f"Closed idle console connection for token {token}")
-            except:
+            except Exception:
                 pass
             
             del self.active_connections[token]

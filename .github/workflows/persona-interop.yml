@@ -128,7 +128,7 @@ jobs:
         echo "- ✅ Message registry follows HPE conventions" >> interop-summary.md
     
     - name: Upload Interop Test Results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: hpe-ilo-interop-results

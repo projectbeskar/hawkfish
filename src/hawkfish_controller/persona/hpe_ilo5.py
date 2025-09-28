@@ -206,7 +206,6 @@ class HpeIlo5Plugin:
         @self.router.get("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs")
         async def get_ilo_jobs(session=Depends(require_session)):
             """Get HPE iLO Jobs (mapped from TaskService)."""
-            from ..services.tasks import TaskService
             
             try:
                 task_service = TaskService()
@@ -215,7 +214,6 @@ class HpeIlo5Plugin:
                 # Convert HawkFish tasks to HPE Job format
                 jobs = []
                 for task in tasks:
-                    job = self._convert_task_to_hpe_job(task)
                     jobs.append({
                         "@odata.id": f"/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs/{task.id}"
                     })
@@ -253,7 +251,6 @@ class HpeIlo5Plugin:
         @self.router.get("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs/{job_id}")
         async def get_ilo_job(job_id: str, session=Depends(require_session)):
             """Get specific HPE iLO Job (mapped from TaskService)."""
-            from ..services.tasks import TaskService
             
             try:
                 task_service = TaskService()

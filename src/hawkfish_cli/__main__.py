@@ -1209,7 +1209,7 @@ def bios_set(
                         typer.echo(f"Error: {error_info.get('message', 'Invalid request')}", err=True)
                 else:
                     typer.echo(f"Error: {error_detail}", err=True)
-            except:
+            except Exception:
                 typer.echo(f"Error: {e.response.text}", err=True)
         else:
             typer.echo(f"Error: {e.response.status_code} {e.response.text}", err=True)

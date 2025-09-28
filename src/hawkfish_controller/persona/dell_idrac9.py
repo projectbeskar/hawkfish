@@ -251,7 +251,6 @@ class DellIdrac9Plugin:
                 # Convert HawkFish tasks to Dell Job format
                 jobs = []
                 for task in tasks:
-                    job = self._convert_task_to_dell_job(task)
                     jobs.append({
                         "@odata.id": f"/redfish/v1/Managers/iDRAC.Embedded.1/Oem/Dell/Jobs/{task.id}"
                     })

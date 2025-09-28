@@ -77,7 +77,7 @@ def skip_if_ilo_disabled(ilo_enabled):
 def setup_test_persona(client, admin_headers, test_system_id):
     """Set up test system with HPE iLO5 persona."""
     # Set the system persona to hpe_ilo5 for testing
-    response = client.patch(
+    client.patch(
         f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
         json={"persona": "hpe_ilo5"},
         headers=admin_headers
@@ -91,5 +91,5 @@ def setup_test_persona(client, admin_headers, test_system_id):
             f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
             headers=admin_headers
         )
-    except:
+    except Exception:
         pass  # Ignore cleanup failures
