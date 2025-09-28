@@ -3,6 +3,10 @@ Tests for persona system functionality.
 """
 
 import pytest
+import tempfile
+import os
+import asyncio
+from pathlib import Path
 from fastapi.testclient import TestClient
 
 from hawkfish_controller.main_app import create_app
@@ -50,7 +54,16 @@ class TestPersonaAPI:
         from hawkfish_controller.api.sessions import global_session_store
         from hawkfish_controller.services.sessions import Session
         
-        session = Session("test-user", "admin", "test-token")
+        import time
+        now = time.time()
+        session = Session(
+            token="test-token",
+            username="test-user",
+            role="admin",
+            created_at=now,
+            expires_at=now + 3600,  # 1 hour
+            last_activity=now
+        )
         global_session_store.sessions["test-token"] = session
         
         response = client.get("/redfish/v1/Oem/HawkFish/Personas", headers=auth_headers)
@@ -70,7 +83,16 @@ class TestPersonaAPI:
         from hawkfish_controller.api.sessions import global_session_store
         from hawkfish_controller.services.sessions import Session
         
-        session = Session("test-user", "admin", "test-token")
+        import time
+        now = time.time()
+        session = Session(
+            token="test-token",
+            username="test-user",
+            role="admin",
+            created_at=now,
+            expires_at=now + 3600,  # 1 hour
+            last_activity=now
+        )
         global_session_store.sessions["test-token"] = session
         
         # Test generic persona
@@ -108,7 +130,16 @@ class TestHpeIlo5Plugin:
         from hawkfish_controller.api.sessions import global_session_store
         from hawkfish_controller.services.sessions import Session
         
-        session = Session("test-user", "admin", "test-token")
+        import time
+        now = time.time()
+        session = Session(
+            token="test-token",
+            username="test-user",
+            role="admin",
+            created_at=now,
+            expires_at=now + 3600,  # 1 hour
+            last_activity=now
+        )
         global_session_store.sessions["test-token"] = session
         
         response = client.get("/redfish/v1/Managers/iLO.Embedded.1", headers=auth_headers)
@@ -128,7 +159,16 @@ class TestHpeIlo5Plugin:
         from hawkfish_controller.api.sessions import global_session_store
         from hawkfish_controller.services.sessions import Session
         
-        session = Session("test-user", "admin", "test-token")
+        import time
+        now = time.time()
+        session = Session(
+            token="test-token",
+            username="test-user",
+            role="admin",
+            created_at=now,
+            expires_at=now + 3600,  # 1 hour
+            last_activity=now
+        )
         global_session_store.sessions["test-token"] = session
         
         response = client.get("/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia", headers=auth_headers)
@@ -144,7 +184,16 @@ class TestHpeIlo5Plugin:
         from hawkfish_controller.api.sessions import global_session_store
         from hawkfish_controller.services.sessions import Session
         
-        session = Session("test-user", "admin", "test-token")
+        import time
+        now = time.time()
+        session = Session(
+            token="test-token",
+            username="test-user",
+            role="admin",
+            created_at=now,
+            expires_at=now + 3600,  # 1 hour
+            last_activity=now
+        )
         global_session_store.sessions["test-token"] = session
         
         response = client.get("/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1", headers=auth_headers)
@@ -207,9 +256,26 @@ class TestHpeIlo5Plugin:
 class TestBiosService:
     """Tests for BIOS service functionality."""
     
+    async def _setup_test_db(self):
+        """Set up test database for BIOS service."""
+        import tempfile
+        from hawkfish_controller.config import settings
+        from hawkfish_controller.services.projects import project_store
+        
+        # Create a temporary directory for testing
+        self._tmp_dir = tempfile.mkdtemp()
+        
+        # Set the state directory to temp directory  
+        settings.state_dir = self._tmp_dir
+        
+        # Initialize database tables
+        await project_store.init()
+    
     @pytest.mark.asyncio
     async def test_get_default_bios_attributes(self):
         """Test getting default BIOS attributes."""
+        await self._setup_test_db()
+        
         from hawkfish_controller.services.bios import bios_service
         
         attrs = await bios_service.get_current_bios_attributes("test-system")
@@ -224,6 +290,8 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_stage_bios_changes(self):
         """Test staging BIOS changes."""
+        await self._setup_test_db()
+        
         from hawkfish_controller.services.bios import bios_service
         
         attributes = {
@@ -244,6 +312,8 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_bios_validation_secure_boot_requires_uefi(self):
         """Test that SecureBoot requires UEFI mode."""
+        await self._setup_test_db()
+        
         from hawkfish_controller.services.bios import bios_service
         
         # Should raise error when trying to enable SecureBoot with LegacyBios
@@ -262,6 +332,8 @@ class TestBiosService:
     @pytest.mark.asyncio
     async def test_apply_pending_bios_changes(self):
         """Test applying pending BIOS changes."""
+        await self._setup_test_db()
+        
         from hawkfish_controller.services.bios import bios_service
         
         # Stage some changes first

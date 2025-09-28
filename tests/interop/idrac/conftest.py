@@ -31,7 +31,16 @@ def client():
 @pytest.fixture
 def admin_session():
     """Create admin session for testing."""
-    session = Session("test-admin", "admin", "test-admin-token")
+    import time
+    now = time.time()
+    session = Session(
+        token="test-admin-token",
+        username="test-admin", 
+        role="admin",
+        created_at=now,
+        expires_at=now + 3600,  # 1 hour
+        last_activity=now
+    )
     global_session_store.sessions["test-admin-token"] = session
     return session
 
@@ -39,7 +48,16 @@ def admin_session():
 @pytest.fixture
 def operator_session():
     """Create operator session for testing."""
-    session = Session("test-operator", "operator", "test-operator-token")
+    import time
+    now = time.time()
+    session = Session(
+        token="test-operator-token",
+        username="test-operator",
+        role="operator", 
+        created_at=now,
+        expires_at=now + 3600,  # 1 hour
+        last_activity=now
+    )
     global_session_store.sessions["test-operator-token"] = session
     return session
 

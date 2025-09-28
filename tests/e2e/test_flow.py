@@ -35,9 +35,27 @@ class FakeDriver:
 def test_e2e_power_boot_media_flow(tmp_path: Path):
     # force state/iso to temp for permissions
     from hawkfish_controller.config import settings
+    import os
 
-    settings.state_dir = str(tmp_path / "state")
-    settings.iso_dir = str(tmp_path / "isos")
+    state_dir = tmp_path / "state"
+    iso_dir = tmp_path / "isos"
+    
+    # Create directories
+    os.makedirs(state_dir, exist_ok=True)
+    os.makedirs(iso_dir, exist_ok=True)
+    
+    settings.state_dir = str(state_dir)
+    settings.iso_dir = str(iso_dir)
+    
+    # Initialize database tables for testing
+    import asyncio
+    from hawkfish_controller.services.projects import project_store
+    
+    async def init_test_db():
+        await project_store.init()
+    
+    asyncio.run(init_test_db())
+    
     app = create_app()
     fake = FakeDriver()
     app.dependency_overrides[systems_api.get_driver] = lambda: fake
