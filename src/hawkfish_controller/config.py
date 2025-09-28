@@ -3,6 +3,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Version
+    version: str = Field(default="0.8.0", alias="HF_VERSION")
+    
     # Libvirt
     libvirt_uri: str = Field(default="qemu:///system", alias="LIBVIRT_URI")
 

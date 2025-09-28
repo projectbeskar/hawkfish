@@ -19,11 +19,21 @@ class TestPersonaRegistry:
     
     def test_list_personas(self):
         """Test listing available personas."""
+        # Register personas for testing
+        from hawkfish_controller.persona.hpe_ilo5 import hpe_ilo5_plugin
+        from hawkfish_controller.persona.dell_idrac9 import dell_idrac9_plugin
+        persona_registry.register_plugin(hpe_ilo5_plugin)
+        persona_registry.register_plugin(dell_idrac9_plugin)
+        
         personas = persona_registry.list_personas()
         assert "hpe_ilo5" in personas
     
     def test_get_hpe_plugin(self):
         """Test getting HPE iLO5 plugin."""
+        # Register personas for testing
+        from hawkfish_controller.persona.hpe_ilo5 import hpe_ilo5_plugin
+        persona_registry.register_plugin(hpe_ilo5_plugin)
+        
         plugin = persona_registry.get_plugin("hpe_ilo5")
         assert plugin is not None
         assert plugin.name == "hpe_ilo5"
@@ -175,7 +185,7 @@ class TestHpeIlo5Plugin:
         assert response.status_code == 200
         
         data = response.json()
-        assert "@odata.type" == "#VirtualMediaCollection.VirtualMediaCollection"
+        assert data["@odata.type"] == "#VirtualMediaCollection.VirtualMediaCollection"
         assert len(data["Members"]) == 1
         assert data["Members"][0]["@odata.id"] == "/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1"
     
@@ -268,7 +278,6 @@ class TestBiosService:
         settings.state_dir = self._tmp_dir
         
         # Ensure the directory exists
-        import os
         os.makedirs(self._tmp_dir, exist_ok=True)
         
         # Update project store to use the temp directory
@@ -280,6 +289,30 @@ class TestBiosService:
         # Also update the bios service to use the same database
         from hawkfish_controller.services.bios import bios_service
         bios_service.db_path = os.path.join(self._tmp_dir, "hawkfish.db")
+        
+        # Initialize BIOS tables specifically (they should be created by project_store.init() but let's be sure)
+        import aiosqlite
+        async with aiosqlite.connect(bios_service.db_path) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hf_bios_pending (
+                    system_id TEXT NOT NULL,
+                    attributes TEXT NOT NULL,
+                    apply_time TEXT NOT NULL DEFAULT 'OnReset',
+                    staged_at TEXT NOT NULL,
+                    staged_by TEXT NOT NULL,
+                    PRIMARY KEY (system_id)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hf_bios_applied (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    system_id TEXT NOT NULL,
+                    attributes TEXT NOT NULL,
+                    applied_at TEXT NOT NULL,
+                    applied_by TEXT NOT NULL
+                )
+            """)
+            await db.commit()
     
     @pytest.mark.asyncio
     async def test_get_default_bios_attributes(self):
@@ -332,12 +365,14 @@ class TestBiosService:
             "SecureBoot": "Enabled"
         }
         
-        with pytest.raises(ValueError) as exc_info:
+        from hawkfish_controller.services.bios import BiosValidationError
+        
+        with pytest.raises(BiosValidationError) as exc_info:
             await bios_service.stage_bios_changes(
                 "test-system", attributes, "OnReset", "test-user"
             )
         
-        assert "SecureBoot requires UEFI boot mode" in str(exc_info.value)
+        assert "SecureBoot can only be enabled when BootMode is set to Uefi" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_apply_pending_bios_changes(self):

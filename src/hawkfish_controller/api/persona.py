@@ -84,7 +84,7 @@ async def set_system_persona(
         raise HTTPException(status_code=403, detail="Only project admins can change system personas")
     
     try:
-        await persona_service.set_system_persona(system_id, assignment.persona, session.user_id)
+        await persona_service.set_system_persona(system_id, assignment.persona, session.username)
         return {
             "TaskState": "Completed",
             "Message": f"System {system_id} persona set to {assignment.persona}"
