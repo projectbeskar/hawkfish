@@ -52,6 +52,29 @@ def client():
         
         async def init_test_db():
             await project_store.init()
+            # Initialize BIOS service tables manually
+            import aiosqlite
+            async with aiosqlite.connect(bios_service.db_path) as db:
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS hf_bios_pending (
+                        system_id TEXT NOT NULL,
+                        attribute TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        apply_time TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (system_id, attribute)
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS hf_bios_applied (
+                        system_id TEXT NOT NULL,
+                        attribute TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        applied_at REAL NOT NULL,
+                        PRIMARY KEY (system_id, attribute)
+                    )
+                """)
+                await db.commit()
         
         asyncio.run(init_test_db())
         

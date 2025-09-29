@@ -45,12 +45,12 @@ def require_project_role(project_id: str, required_role: str) -> Callable:
         if not session:
             raise HTTPException(status_code=401, detail="Authentication required")
         
-        user_id = session.get("user_id")
+        user_id = session.username
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid session")
         
         # Global admins have access to all projects
-        if session.get("is_admin") or session.get("role") == "admin":
+        if session.role == "admin":
             return session
         
         # Check project-specific role
@@ -79,12 +79,12 @@ async def filter_projects_by_access(projects: list[dict[str, Any]], session: dic
     if not session:
         return []
     
-    user_id = session.get("user_id")
+    user_id = session.username
     if not user_id:
         return []
     
-    # Global admins see all projects
-    if session.get("is_admin") or session.get("role") == "admin":
+    # Global admins see all projects  
+    if session.role == "admin":
         return projects
     
     # Filter to projects where user has a role
@@ -107,12 +107,12 @@ async def check_project_access(project_id: str, session: dict[str, Any] | None, 
     if not session:
         return False
     
-    user_id = session.get("user_id")
+    user_id = session.username
     if not user_id:
         return False
     
     # Global admins have access to all projects
-    if session.get("is_admin") or session.get("role") == "admin":
+    if session.role == "admin":
         return True
     
     # Default project is accessible to all authenticated users

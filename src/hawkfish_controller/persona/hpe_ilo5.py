@@ -318,7 +318,7 @@ class HpeIlo5Plugin:
                 console_session = await console_service.create_session(
                     system_id=system_id,
                     protocol=protocol.lower(),
-                    user_id=session.user_id
+                    user_id=session.username
                 )
                 
                 # Construct WebSocket URL
@@ -450,7 +450,7 @@ class HpeIlo5Plugin:
                 
                 # Stage the changes
                 await bios_service.stage_bios_changes(
-                    system_id, attributes, apply_time, session.user_id
+                    system_id, attributes, apply_time, session.username
                 )
                 
                 return {

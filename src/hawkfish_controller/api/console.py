@@ -78,8 +78,8 @@ async def revoke_console_session(
     if console_session.system_id != system_id:
         return redfish_error("InvalidParameter", "Token does not match system", 400)
     
-    user_id = session.get("user_id")
-    if console_session.user_id != user_id and not session.get("is_admin"):
+    user_id = session.username
+    if console_session.user_id != user_id and session.role != "admin":
         return redfish_error("AccessDenied", "Can only revoke your own sessions", 403)
     
     revoked = await console_service.revoke_session(token)
@@ -101,8 +101,8 @@ async def list_console_sessions(
     sessions = await console_service.list_active_sessions(system_id=system_id)
     
     # Filter to user's own sessions unless admin
-    user_id = session.get("user_id")
-    if not session.get("is_admin"):
+    user_id = session.username
+    if session.role != "admin":
         sessions = [s for s in sessions if s.user_id == user_id]
     
     members = []

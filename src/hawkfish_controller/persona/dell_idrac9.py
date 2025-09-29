@@ -370,7 +370,7 @@ class DellIdrac9Plugin:
             try:
                 # Stage the changes using core BIOS service
                 await bios_service.stage_bios_changes(
-                    system_id, attributes, apply_time, session.user_id
+                    system_id, attributes, apply_time, session.username
                 )
                 
                 return {
