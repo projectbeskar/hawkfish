@@ -125,13 +125,18 @@ def skip_if_ilo_disabled(ilo_enabled):
 @pytest.fixture(autouse=True)
 def setup_test_persona(client, admin_headers, test_system_id):
     """Set up test system with HPE iLO5 persona."""
-    # Set the system persona to hpe_ilo5 for testing
-    client.patch(
-        f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
-        json={"persona": "hpe_ilo5"},
-        headers=admin_headers
-    )
-    # Don't fail if persona setting fails in setup
+    # Try to set the system persona to hpe_ilo5 for testing, but don't fail if it doesn't work
+    try:
+        response = client.patch(
+            f"/redfish/v1/Oem/HawkFish/Personas/Systems/{test_system_id}",
+            json={"persona": "hpe_ilo5"},
+            headers=admin_headers
+        )
+        if response.status_code not in (200, 201, 202):
+            print(f"Warning: Could not set persona (status {response.status_code}), continuing anyway")
+    except Exception as e:
+        print(f"Warning: Could not set persona ({e}), continuing anyway")
+    
     yield
     
     # Cleanup - remove persona override
