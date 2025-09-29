@@ -56,47 +56,57 @@ def client():
             from hawkfish_controller.services.bios import bios_service
             import aiosqlite
             async with aiosqlite.connect(bios_service.db_path) as db:
+                # Create BIOS tables with correct schema matching projects.py
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS hf_bios_pending (
-                        system_id TEXT NOT NULL,
-                        attribute TEXT NOT NULL,
-                        value TEXT NOT NULL,
+                        system_id TEXT PRIMARY KEY,
+                        attributes TEXT NOT NULL,
                         apply_time TEXT NOT NULL,
-                        created_at REAL NOT NULL,
-                        PRIMARY KEY (system_id, attribute)
+                        staged_at TEXT NOT NULL,
+                        staged_by TEXT
                     )
                 """)
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS hf_bios_applied (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         system_id TEXT NOT NULL,
-                        attribute TEXT NOT NULL,
-                        value TEXT NOT NULL,
-                        applied_at REAL NOT NULL,
-                        PRIMARY KEY (system_id, attribute)
+                        attributes TEXT NOT NULL,
+                        applied_at TEXT NOT NULL,
+                        applied_by TEXT
                     )
                 """)
                 await db.commit()
         
         asyncio.run(init_test_db())
         
+        # Override the global task service singleton BEFORE creating the app
+        from hawkfish_controller.services.tasks import TaskService
+        from hawkfish_controller.api import task_event
+        
+        # Replace the global singleton with test instance
+        task_event._task_service = TaskService(db_path=os.path.join(temp_dir, "hawkfish.db"))
+        
         app = create_app()
         
-        # Override the libvirt driver with fake driver
-        from hawkfish_controller.drivers.libvirt_driver import get_driver
+        # Override the libvirt driver with fake driver in all modules that use it
+        from hawkfish_controller.drivers.libvirt_driver import get_driver as libvirt_get_driver
+        from hawkfish_controller.api.systems import get_driver as systems_get_driver
+        from hawkfish_controller.api.managers import get_driver as managers_get_driver
         
         def get_fake_driver():
             return FakeDriver()
         
-        app.dependency_overrides[get_driver] = get_fake_driver
+        app.dependency_overrides[libvirt_get_driver] = get_fake_driver
+        app.dependency_overrides[systems_get_driver] = get_fake_driver
+        app.dependency_overrides[managers_get_driver] = get_fake_driver
         
-        # Override task service to use temp directory
-        from hawkfish_controller.services.tasks import TaskService
+        # Also override dependency injection functions
         from hawkfish_controller.api.orchestrator import get_task_service
         from hawkfish_controller.api.batch import get_task_service as get_batch_task_service
         from hawkfish_controller.api.task_event import get_task_service as get_event_task_service
         
         def get_test_task_service():
-            return TaskService(db_path=os.path.join(temp_dir, "hawkfish.db"))
+            return task_event._task_service  # Use same instance
         
         app.dependency_overrides[get_task_service] = get_test_task_service
         app.dependency_overrides[get_batch_task_service] = get_test_task_service
