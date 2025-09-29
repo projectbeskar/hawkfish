@@ -23,7 +23,7 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 
@@ -35,7 +35,7 @@ class HawkFishBasicClient:
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.password = password
-        self.session_token: Optional[str] = None
+        self.session_token: str | None = None
         self.client = httpx.AsyncClient(verify=False, timeout=30.0)
     
     async def __aenter__(self):
@@ -152,7 +152,7 @@ class HawkFishBasicClient:
                 if "error" in error_detail:
                     message = error_detail["error"].get("message", "Unknown error")
                     print(f"  Error: {message}")
-            except:
+            except Exception:
                 pass
             return False
     

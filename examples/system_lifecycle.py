@@ -27,7 +27,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 
@@ -39,7 +39,7 @@ class SystemLifecycleManager:
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.password = password
-        self.session_token: Optional[str] = None
+        self.session_token: str | None = None
         self.client = httpx.AsyncClient(verify=False, timeout=60.0)
         self.created_resources = {
             "profiles": [],
@@ -101,7 +101,7 @@ class SystemLifecycleManager:
         
         return profile_id
     
-    async def create_system(self, name: str, profile_id: str, project_id: Optional[str] = None) -> str:
+    async def create_system(self, name: str, profile_id: str, project_id: str | None = None) -> str:
         """Create a system from a profile."""
         print(f"Creating system '{name}' from profile {profile_id}...")
         
@@ -232,7 +232,7 @@ class SystemLifecycleManager:
             }
         )
         response.raise_for_status()
-        print(f"  ✓ Boot configuration updated")
+        print("  ✓ Boot configuration updated")
     
     async def insert_virtual_media(self, system_id: str, image_uri: str, device: str = "Cd") -> None:
         """Insert virtual media into system."""
@@ -301,7 +301,7 @@ class SystemLifecycleManager:
             if system_info.get("PowerState") == "On":
                 await self.power_control(system_id, "ForceOff")
                 await self.wait_for_power_state(system_id, "Off", timeout=30)
-        except:
+        except Exception:
             pass  # Continue with deletion even if power off fails
         
         params = {}
@@ -462,7 +462,7 @@ async def demo_lifecycle():
         
         final_info = await manager.get_system_info(system_id)
         boot_config = final_info.get("Boot", {})
-        print(f"✓ System operational")
+        print("✓ System operational")
         print(f"  Power State: {final_info.get('PowerState', 'Unknown')}")
         print(f"  Boot Source: {boot_config.get('BootSourceOverrideTarget', 'Hdd')}")
         print(f"  Boot Enabled: {boot_config.get('BootSourceOverrideEnabled', 'Disabled')}")
