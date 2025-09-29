@@ -41,7 +41,7 @@ async def create_session(body: dict):
 
 
 def require_session(x_auth_token: str | None = Header(default=None, alias="X-Auth-Token")) -> Session:
-    if settings.auth_mode == "none":
+    if getattr(settings, 'auth_mode', None) == "none":
         # return a permissive session for local/test mode
         dev_token = os.environ.get("HF_DEV_TOKEN", "dev")
         return Session(token=dev_token, username="local", role="admin", created_at=0.0, expires_at=1e12, last_activity=time.time())  # type: ignore[name-defined]

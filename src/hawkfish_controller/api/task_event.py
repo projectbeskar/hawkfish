@@ -25,6 +25,7 @@ _task_service: TaskService | None = None
 def get_task_service() -> TaskService:
     global _task_service
     if _task_service is None:
+        print(f"DEBUG: Creating TaskService with path: {settings.state_dir}/tasks.db")  # DEBUG
         _task_service = TaskService(db_path=f"{settings.state_dir}/tasks.db")
     return _task_service
 
