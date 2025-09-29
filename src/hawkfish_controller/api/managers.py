@@ -54,7 +54,7 @@ def list_virtual_media():
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia", response_model=None)
-def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+async def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
     if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
@@ -99,7 +99,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
         async def start_task():
             return await task_service.run_background(name=f"Download ISO {image}", coro_factory=lambda tid: job(tid))
 
-        t = anyio.from_thread.run(start_task)
+        t = await start_task()
         location = f"/redfish/v1/TaskService/Tasks/{t.id}"
         return JSONResponse(content={"@odata.id": location}, status_code=202, headers={"Location": location})
 
@@ -122,7 +122,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
     try:
         driver.attach_iso(system_id, image)
         _update_iso_index(image)
-        anyio.from_thread.run(publish_event, "MediaInserted", {"systemId": system_id, "details": {"image": image}}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db"))
+        await publish_event("MediaInserted", {"systemId": system_id, "details": {"image": image}}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db"))
         MEDIA_ACTIONS.labels(action="insert", result="success").inc()
         return {"TaskState": "Completed"}
     except LibvirtError as exc:
@@ -130,7 +130,7 @@ def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), sessio
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.EjectMedia")
-def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+async def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
     if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
@@ -138,7 +138,7 @@ def eject_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId required")
     try:
         driver.detach_iso(system_id)
-        anyio.from_thread.run(publish_event, "MediaEjected", {"systemId": system_id}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db"))
+        await publish_event("MediaEjected", {"systemId": system_id}, SubscriptionStore(db_path=f"{settings.state_dir}/events.db"))
         MEDIA_ACTIONS.labels(action="eject", result="success").inc()
     except LibvirtError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

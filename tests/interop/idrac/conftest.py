@@ -33,6 +33,26 @@ def client():
     os.makedirs(settings.iso_dir, exist_ok=True)
     
     try:
+        # Initialize database in temp directory
+        import asyncio
+        from hawkfish_controller.services.projects import project_store
+        
+        # Update all service database paths
+        project_store.db_path = os.path.join(temp_dir, "hawkfish.db")
+        
+        # Update bios service database path
+        from hawkfish_controller.services.bios import bios_service
+        bios_service.db_path = os.path.join(temp_dir, "hawkfish.db")
+        
+        # Update persona service database path
+        from hawkfish_controller.services.persona import persona_service
+        persona_service.db_path = os.path.join(temp_dir, "hawkfish.db")
+        
+        async def init_test_db():
+            await project_store.init()
+        
+        asyncio.run(init_test_db())
+        
         app = create_app()
         
         # Override the libvirt driver with fake driver

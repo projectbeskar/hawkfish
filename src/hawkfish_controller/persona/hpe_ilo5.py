@@ -176,7 +176,7 @@ class HpeIlo5Plugin:
                 "Image": image_url
             }
             
-            return insert_media(core_body, driver, session)
+            return await insert_media(core_body, driver, session)
         
         @self.router.post("/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1/Actions/VirtualMedia.EjectMedia")
         async def ilo_eject_media(
@@ -201,7 +201,7 @@ class HpeIlo5Plugin:
             from ..api.managers import eject_media
             core_body = {"SystemId": system_id}
             
-            return eject_media(core_body, driver, session)
+            return await eject_media(core_body, driver, session)
         
         @self.router.get("/redfish/v1/Managers/iLO.Embedded.1/Oem/Hpe/Jobs")
         async def get_ilo_jobs(session=Depends(require_session)):

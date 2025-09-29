@@ -186,7 +186,7 @@ class DellIdrac9Plugin:
                 "Image": image_url
             }
             
-            result = insert_media(core_body, driver, session)
+            result = await insert_media(core_body, driver, session)
             
             # Add Dell-specific response formatting
             if isinstance(result, dict):
@@ -224,7 +224,7 @@ class DellIdrac9Plugin:
             from ..api.managers import eject_media
             core_body = {"SystemId": system_id}
             
-            result = eject_media(core_body, driver, session)
+            result = await eject_media(core_body, driver, session)
             
             # Add Dell-specific response formatting
             if isinstance(result, dict):
