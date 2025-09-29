@@ -44,9 +44,11 @@ def client():
         from hawkfish_controller.services.bios import bios_service
         bios_service.db_path = os.path.join(temp_dir, "hawkfish.db")
         
-        # Update persona service database path
+        # Update all service database paths
         from hawkfish_controller.services.persona import persona_service
         persona_service.db_path = os.path.join(temp_dir, "hawkfish.db")
+        
+        # Note: Task service paths will be handled via dependency injection
         
         async def init_test_db():
             await project_store.init()
@@ -62,6 +64,19 @@ def client():
             return FakeDriver()
         
         app.dependency_overrides[get_driver] = get_fake_driver
+        
+        # Override task service to use temp directory
+        from hawkfish_controller.services.tasks import TaskService
+        from hawkfish_controller.api.orchestrator import get_task_service
+        from hawkfish_controller.api.batch import get_task_service as get_batch_task_service
+        from hawkfish_controller.api.task_event import get_task_service as get_event_task_service
+        
+        def get_test_task_service():
+            return TaskService(db_path=os.path.join(temp_dir, "hawkfish.db"))
+        
+        app.dependency_overrides[get_task_service] = get_test_task_service
+        app.dependency_overrides[get_batch_task_service] = get_test_task_service
+        app.dependency_overrides[get_event_task_service] = get_test_task_service
         
         yield TestClient(app)
     finally:
