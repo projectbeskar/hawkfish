@@ -116,19 +116,13 @@ jobs:
   build-docker:
     runs-on: ubuntu-latest
     needs: [validate-version, test]
+    if: false  # Disabled until Docker Hub credentials are configured
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
-      - name: Log in to Docker Hub
-        if: github.event_name != 'workflow_dispatch'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
           
       - name: Extract metadata
         id: meta
@@ -143,13 +137,13 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
           
-      - name: Build and push Docker image
+      - name: Build Docker image (no push)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'workflow_dispatch' }}
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -159,7 +153,7 @@ jobs:
 
   create-release:
     runs-on: ubuntu-latest
-    needs: [validate-version, test, build-wheel, build-docker]
+    needs: [validate-version, test, build-wheel]
     if: github.event_name != 'workflow_dispatch'
     permissions:
       contents: write
@@ -214,7 +208,8 @@ jobs:
           
           ### Docker
           \`\`\`bash
-          docker pull hawkfish/hawkfish-controller:${{ needs.validate-version.outputs.version }}
+          # Docker images available after Docker Hub setup
+          # docker pull hawkfish/hawkfish-controller:${{ needs.validate-version.outputs.version }}
           \`\`\`
           
           ### From Source
@@ -289,28 +284,6 @@ jobs:
           packages-dir: dist/
           verbose: true
 
-  update-helm-chart:
-    runs-on: ubuntu-latest
-    needs: [validate-version, build-docker]
-    if: github.event_name != 'workflow_dispatch'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Update Helm chart version
-        run: |
-          VERSION="${{ needs.validate-version.outputs.version }}"
-          sed -i "s/^version: .*/version: $VERSION/" deploy/helm/Chart.yaml
-          sed -i "s/^appVersion: .*/appVersion: $VERSION/" deploy/helm/Chart.yaml
-          sed -i "s/tag: .*/tag: \"$VERSION\"/" deploy/helm/values.yaml
-          
-      - name: Commit and push Helm chart updates
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add deploy/helm/Chart.yaml deploy/helm/values.yaml
-          git commit -m "Update Helm chart to version ${{ needs.validate-version.outputs.version }}" || exit 0
-          git push
 
   notify-release:
     runs-on: ubuntu-latest
@@ -324,8 +297,8 @@ jobs:
           
           if [ "$SUCCESS" = "true" ]; then
             echo "Release $VERSION completed successfully!"
-            echo "Docker images: hawkfish/hawkfish-controller:${{ needs.validate-version.outputs.version }}"
             echo "Python package: hawkfish==${{ needs.validate-version.outputs.version }}"
+            echo "Docker images: Available after Docker Hub configuration"
           else
             echo "Release $VERSION failed. Check the workflow logs for details."
           fi
