@@ -171,12 +171,17 @@ class HpeIlo5Plugin:
             
             # Delegate to core VirtualMedia logic
             from ..api.managers import insert_media
+            from ..api.task_event import get_task_service
+            
             core_body = {
                 "SystemId": system_id,
                 "Image": image_url
             }
             
-            return await insert_media(core_body, driver, session)
+            # Get task service for direct function call
+            task_service = get_task_service()
+            
+            return await insert_media(core_body, driver, session, task_service)
         
         @self.router.post("/redfish/v1/Managers/iLO.Embedded.1/VirtualMedia/CD1/Actions/VirtualMedia.EjectMedia")
         async def ilo_eject_media(

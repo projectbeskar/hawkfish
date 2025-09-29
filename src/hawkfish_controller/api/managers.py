@@ -14,6 +14,7 @@ from ..drivers.libvirt_driver import LibvirtDriver, LibvirtError
 from ..services.events import SubscriptionStore, publish_event
 from ..services.metrics import BYTES_DOWNLOADED, MEDIA_ACTIONS
 from ..services.security import check_role
+from ..services.tasks import TaskService
 from .sessions import require_session
 from .task_event import get_task_service
 
@@ -54,7 +55,12 @@ def list_virtual_media():
 
 
 @router.post("/HawkFish/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia", response_model=None)
-async def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), session=Depends(require_session)):
+async def insert_media(
+    body: dict, 
+    driver: LibvirtDriver = Depends(get_driver), 
+    session=Depends(require_session),
+    task_service: TaskService = Depends(get_task_service)
+):
     if not check_role("operator", session.role):
         raise HTTPException(status_code=403, detail="Forbidden")
     system_id = body.get("SystemId")
@@ -63,7 +69,6 @@ async def insert_media(body: dict, driver: LibvirtDriver = Depends(get_driver), 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SystemId and Image required")
     # remote URL: start download task
     if image.startswith("http://") or image.startswith("https://"):
-        task_service = get_task_service()
 
         subs = SubscriptionStore(db_path=f"{settings.state_dir}/events.db")
 
