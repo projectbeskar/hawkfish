@@ -15,17 +15,46 @@ from hawkfish_controller.drivers.fake_driver import FakeDriver
 @pytest.fixture
 def client():
     """Create test client with HPE persona enabled."""
-    app = create_app()
+    import tempfile
+    import os
     
-    # Override the libvirt driver with fake driver
-    from hawkfish_controller.drivers.libvirt_driver import get_driver
+    # Create temporary directory for test state
+    temp_dir = tempfile.mkdtemp()
     
-    def get_fake_driver():
-        return FakeDriver()
+    # Override the settings to use the temp directory
+    from hawkfish_controller.config import settings
+    original_state_dir = settings.state_dir
+    original_iso_dir = settings.iso_dir
+    settings.state_dir = temp_dir
+    settings.iso_dir = os.path.join(temp_dir, "isos")
     
-    app.dependency_overrides[get_driver] = get_fake_driver
+    # Ensure directories exist
+    os.makedirs(settings.state_dir, exist_ok=True)
+    os.makedirs(settings.iso_dir, exist_ok=True)
     
-    return TestClient(app)
+    try:
+        app = create_app()
+        
+        # Override the libvirt driver with fake driver
+        from hawkfish_controller.drivers.libvirt_driver import get_driver
+        
+        def get_fake_driver():
+            return FakeDriver()
+        
+        app.dependency_overrides[get_driver] = get_fake_driver
+        
+        yield TestClient(app)
+    finally:
+        # Restore original settings
+        settings.state_dir = original_state_dir
+        settings.iso_dir = original_iso_dir
+        
+        # Clean up temp directory
+        import shutil
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception:
+            pass
 
 
 @pytest.fixture
