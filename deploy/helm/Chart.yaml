@@ -1,17 +1,57 @@
 apiVersion: v2
 name: hawkfish
-description: A Helm chart for HawkFish virtualization management
+description: Cloud-native virtualization management platform with DMTF Redfish API compatibility
 type: application
-version: 0.7.0
-appVersion: "0.7.0"
+version: 0.1.0
+appVersion: "0.1.0"
+
+# Metadata
 keywords:
   - virtualization
   - redfish
   - libvirt
   - kvm
+  - cloud-native
+  - infrastructure
+  - kubernetes
+
 home: https://github.com/projectbeskar/hawkfish
 sources:
   - https://github.com/projectbeskar/hawkfish
+
 maintainers:
   - name: HawkFish Team
-    email: hawkfish@projectbeskar.org
+    email: maintainers@hawkfish.local
+
+# Kubernetes version compatibility
+kubeVersion: ">=1.20.0-0"
+
+# Dependencies for production deployments
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+    tags:
+      - database
+  - name: redis
+    version: "17.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+    tags:
+      - cache
+
+# Annotations for Helm registry and Artifact Hub
+annotations:
+  category: Infrastructure
+  licenses: Apache-2.0
+  artifacthub.io/operator: "false"
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial Kubernetes deployment support
+    - kind: added
+      description: Comprehensive Helm chart with production features
+    - kind: added
+      description: PostgreSQL and Redis integration options

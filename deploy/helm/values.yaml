@@ -1,102 +1,103 @@
 # Default values for hawkfish
 # This is a YAML-formatted file.
 
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Deployment configuration
 replicaCount: 1
 
 image:
+  registry: docker.io
   repository: hawkfish/hawkfish-controller
+  tag: ""  # Defaults to chart appVersion
   pullPolicy: IfNotPresent
-  tag: "latest"
+  debug: false
 
+# Image pull secrets
 imagePullSecrets: []
+
+# Name overrides
 nameOverride: ""
 fullnameOverride: ""
 
+# Service Account
 serviceAccount:
-  # Specifies whether a service account should be created
   create: true
-  # Annotations to add to the service account
   annotations: {}
-  # The name of the service account to use.
   name: ""
+  automountServiceAccountToken: true
 
+# Pod configuration
 podAnnotations: {}
+podLabels: {}
 
 podSecurityContext:
   fsGroup: 1000
+  runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
-  runAsNonRoot: true
 
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
     - ALL
-  readOnlyRootFilesystem: true
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
 
-service:
-  type: ClusterIP
-  port: 8080
-  targetPort: 8080
-
-ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
-  hosts:
-    - host: hawkfish.local
-      paths:
-        - path: /
-          pathType: Prefix
-  tls: []
-  #  - secretName: hawkfish-tls
-  #    hosts:
-  #      - hawkfish.local
-
-resources:
-  limits:
-    cpu: 1000m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 256Mi
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-
-# HawkFish-specific configuration
+# HawkFish application configuration
 hawkfish:
-  # API configuration
-  api:
-    host: "0.0.0.0"
-    port: 8080
+  # Core configuration
+  host: "0.0.0.0"
+  port: 8080
+  logLevel: "INFO"
+  workerCount: 4
   
-  # Authentication mode: "none", "sessions"
+  # Authentication
   auth:
-    mode: "sessions"
-  
-  # TLS configuration
-  tls:
-    mode: "off"  # "off", "self-signed", "custom"
-    # For custom TLS, provide secret name containing tls.crt and tls.key
-    secretName: ""
+    enabled: true
+    method: "sessions"  # sessions, oauth, ldap
+    sessionTimeout: "24h"
   
   # UI configuration
   ui:
     enabled: true
+    title: "HawkFish Management"
+  
+  # Metrics and monitoring
+  metrics:
+    enabled: true
+    path: "/redfish/v1/metrics"
+  
+  # Database configuration
+  database:
+    type: "sqlite"  # sqlite, postgresql
+    path: "/var/lib/hawkfish/data/hawkfish.db"
+  
+  # Storage configuration
+  storage:
+    dataDir: "/var/lib/hawkfish/data"
+    isoPath: "/var/lib/hawkfish/isos"
+  
+  # Multi-tenancy
+  multiTenant:
+    enabled: true
+    defaultProject: "default"
+  
+  # Persona system
+  personas:
+    enabled: true
+    autoDetect: true
+  
+  # Event system
+  events:
+    enabled: true
+    retentionDays: 30
   
   # Libvirt configuration
   libvirt:
@@ -106,61 +107,210 @@ hawkfish:
       max: 10
       ttlSec: 300
   
-  # Storage configuration
-  storage:
-    stateDir: "/var/lib/hawkfish"
-    isoDir: "/var/lib/hawkfish/isos"
+  # TLS configuration
+  tls:
+    mode: "off"  # "off", "self-signed", "custom"
+    secretName: ""
   
-  # Default libvirt hosts to register at startup
+  # Default hosts to register at startup
   hosts: []
     # - uri: "qemu+ssh://host1/system"
     #   name: "host1"
     #   labels:
     #     region: "us-west"
     #     ssd: "true"
+  
+  # Additional environment variables
+  extraEnvVars: []
+  extraEnvVarsCM: ""
+  extraEnvVarsSecret: ""
 
-# Persistent volume for state storage
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+  labels: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: hawkfish.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: hawkfish-tls
+    #   hosts:
+    #     - hawkfish.local
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Vertical Pod Autoscaler
+verticalPodAutoscaler:
+  enabled: false
+  updateMode: "Off"  # Off, Initial, Recreation, Auto
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Node selection
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Topology spread constraints
+topologySpreadConstraints: []
+
+# Priority class
+priorityClassName: ""
+
+# Persistent storage
 persistence:
   enabled: true
   storageClass: ""
   accessMode: ReadWriteOnce
   size: 10Gi
   annotations: {}
+  
+  # ISO storage for virtual media
+  isos:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteMany
+    size: 50Gi
+    annotations: {}
 
-# ConfigMap for additional configuration
-config:
-  # Additional hawkfish.toml configuration
-  extra: ""
+# ConfigMap and Secret mounts
+extraVolumes: []
+extraVolumeMounts: []
+
+# Init containers
+initContainers: []
+
+# Sidecar containers
+sidecars: []
+
+# Liveness probe
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /redfish/v1/
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+# Readiness probe
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /redfish/v1/
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+# Startup probe
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /redfish/v1/
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+  successThreshold: 1
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  labels: {}
+  annotations: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /redfish/v1/metrics
+
+# Network Policy
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+# PostgreSQL dependency (optional)
+postgresql:
+  enabled: false
+  auth:
+    postgresPassword: "hawkfish"
+    username: "hawkfish"
+    password: "hawkfish"
+    database: "hawkfish"
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Redis dependency (optional)
+redis:
+  enabled: false
+  auth:
+    enabled: true
+    password: "hawkfish"
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Tests
+tests:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: curlimages/curl
+    tag: latest
+    pullPolicy: IfNotPresent
 
 # Environment variables
 env: []
   # - name: CUSTOM_VAR
   #   value: "custom-value"
 
-# Probes configuration
-probes:
-  liveness:
-    enabled: true
-    initialDelaySeconds: 30
-    periodSeconds: 30
-    timeoutSeconds: 10
-    failureThreshold: 3
-  readiness:
-    enabled: true
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-
-# Metrics and monitoring
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: false
-    labels: {}
-    annotations: {}
-
-# Pod disruption budget
-podDisruptionBudget:
-  enabled: false
-  minAvailable: 1
+# ConfigMap for additional configuration
+config:
+  # Additional configuration
+  extra: ""

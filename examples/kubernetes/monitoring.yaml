@@ -1,0 +1,255 @@
+# Monitoring configuration for HawkFish
+# This includes ServiceMonitor for Prometheus and Grafana dashboard
+
+# ServiceMonitor for Prometheus scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hawkfish-metrics
+  namespace: hawkfish
+  labels:
+    app.kubernetes.io/name: hawkfish
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hawkfish
+  endpoints:
+  - port: http
+    path: /redfish/v1/metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hawkfish-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  hawkfish-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "HawkFish Metrics",
+        "tags": ["hawkfish", "virtualization"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "API Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(hawkfish_http_requests_total[5m])",
+                "legendFormat": "{{method}} {{endpoint}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 0
+            }
+          },
+          {
+            "id": 2,
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(hawkfish_http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(hawkfish_http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 0
+            }
+          },
+          {
+            "id": 3,
+            "title": "System Count",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "hawkfish_systems_total",
+                "legendFormat": "Total Systems"
+              }
+            ],
+            "gridPos": {
+              "h": 4,
+              "w": 6,
+              "x": 0,
+              "y": 8
+            }
+          },
+          {
+            "id": 4,
+            "title": "Active Tasks",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "hawkfish_tasks_active",
+                "legendFormat": "Active Tasks"
+              }
+            ],
+            "gridPos": {
+              "h": 4,
+              "w": 6,
+              "x": 6,
+              "y": 8
+            }
+          },
+          {
+            "id": 5,
+            "title": "Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "process_resident_memory_bytes{job=\"hawkfish\"}",
+                "legendFormat": "RSS Memory"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Bytes"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 8
+            }
+          },
+          {
+            "id": 6,
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(hawkfish_http_requests_total{status=~\"4..|5..\"}[5m])",
+                "legendFormat": "{{status}} errors"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Errors/sec"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 24,
+              "x": 0,
+              "y": 16
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hawkfish-alerts
+  namespace: hawkfish
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: hawkfish.rules
+    rules:
+    - alert: HawkFishDown
+      expr: up{job="hawkfish"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "HawkFish instance is down"
+        description: "HawkFish instance {{ $labels.instance }} has been down for more than 1 minute."
+    
+    - alert: HawkFishHighErrorRate
+      expr: rate(hawkfish_http_requests_total{status=~"5.."}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High error rate in HawkFish"
+        description: "HawkFish instance {{ $labels.instance }} has error rate of {{ $value }} errors per second."
+    
+    - alert: HawkFishHighResponseTime
+      expr: histogram_quantile(0.95, rate(hawkfish_http_request_duration_seconds_bucket[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High response time in HawkFish"
+        description: "HawkFish instance {{ $labels.instance }} has 95th percentile response time of {{ $value }} seconds."
+    
+    - alert: HawkFishHighMemoryUsage
+      expr: process_resident_memory_bytes{job="hawkfish"} / 1024 / 1024 / 1024 > 3
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage in HawkFish"
+        description: "HawkFish instance {{ $labels.instance }} is using {{ $value }}GB of memory."
+    
+    - alert: HawkFishTaskQueueBacklog
+      expr: hawkfish_tasks_pending > 50
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Task queue backlog in HawkFish"
+        description: "HawkFish instance {{ $labels.instance }} has {{ $value }} pending tasks."
+
+---
+# Optional: Grafana Datasource for HawkFish
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hawkfish-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  hawkfish-prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: HawkFish Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus-operated:9090
+      isDefault: false
+      editable: true
+      jsonData:
+        timeInterval: "30s"

@@ -1,0 +1,296 @@
+# Production values for HawkFish Helm chart
+# This configuration provides a production-ready setup with high availability,
+# monitoring, and security best practices.
+
+# Deployment configuration
+replicaCount: 3
+
+image:
+  registry: docker.io
+  repository: hawkfish/hawkfish-controller
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# Resource allocation
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Anti-affinity to spread pods across nodes
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - hawkfish
+        topologyKey: kubernetes.io/hostname
+
+# Persistent storage
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"
+  accessMode: ReadWriteOnce
+  size: 100Gi
+  annotations:
+    volume.beta.kubernetes.io/storage-provisioner: kubernetes.io/aws-ebs
+  
+  # ISO storage for virtual media
+  isos:
+    enabled: true
+    storageClass: "standard"
+    accessMode: ReadWriteMany
+    size: 200Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: hawkfish.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: hawkfish-tls
+      hosts:
+        - hawkfish.example.com
+
+# HawkFish application configuration
+hawkfish:
+  # Core settings
+  logLevel: "INFO"
+  workerCount: 4
+  
+  # Authentication
+  auth:
+    enabled: true
+    method: "sessions"
+    sessionTimeout: "24h"
+  
+  # UI configuration
+  ui:
+    enabled: true
+    title: "HawkFish Production"
+  
+  # Metrics and monitoring
+  metrics:
+    enabled: true
+  
+  # Database configuration (PostgreSQL for production)
+  database:
+    type: "postgresql"
+  
+  # Multi-tenancy
+  multiTenant:
+    enabled: true
+    defaultProject: "default"
+  
+  # Persona system
+  personas:
+    enabled: true
+    autoDetect: true
+  
+  # Event system
+  events:
+    enabled: true
+    retentionDays: 90
+  
+  # TLS configuration
+  tls:
+    mode: "custom"
+    secretName: "hawkfish-tls"
+
+# Security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+    - ALL
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/redfish/v1/metrics"
+
+# Monitoring configuration
+serviceMonitor:
+  enabled: true
+  namespace: "monitoring"
+  labels:
+    prometheus: kube-prometheus
+  annotations:
+    prometheus.io/scrape: "true"
+  interval: 30s
+  scrapeTimeout: 10s
+
+# Network policy for security
+networkPolicy:
+  enabled: true
+  ingress:
+    # Allow ingress controller
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: ingress-nginx
+      ports:
+      - protocol: TCP
+        port: 8080
+    
+    # Allow monitoring
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: monitoring
+      ports:
+      - protocol: TCP
+        port: 8080
+  
+  egress:
+    # Allow DNS
+    - to: []
+      ports:
+      - protocol: UDP
+        port: 53
+    
+    # Allow PostgreSQL
+    - to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: postgresql
+      ports:
+      - protocol: TCP
+        port: 5432
+    
+    # Allow HTTPS (for external APIs)
+    - to: []
+      ports:
+      - protocol: TCP
+        port: 443
+
+# PostgreSQL database
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "admin-secure-password"
+    username: "hawkfish"
+    password: "hawkfish-secure-password"
+    database: "hawkfish"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: "fast-ssd"
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+    
+    podSecurityContext:
+      enabled: true
+      fsGroup: 1001
+      runAsUser: 1001
+    
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 1001
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+
+# Redis cache (optional)
+redis:
+  enabled: false
+  auth:
+    enabled: true
+    password: "redis-secure-password"
+  
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClass: "standard"
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+# Tests
+tests:
+  enabled: true
+
+# Additional environment variables
+env:
+  - name: TZ
+    value: "UTC"
+  - name: PYTHONUNBUFFERED
+    value: "1"
+
+# Node selection (optional)
+nodeSelector:
+  kubernetes.io/arch: amd64
+  # node-type: compute
+
+# Tolerations (optional)
+tolerations: []
+  # - key: "dedicated"
+  #   operator: "Equal"
+  #   value: "hawkfish"
+  #   effect: "NoSchedule"
+
+# Priority class (optional)
+priorityClassName: ""
+  # priorityClassName: "high-priority"

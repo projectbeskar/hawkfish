@@ -1,0 +1,146 @@
+# Basic values for HawkFish development and testing
+# This configuration provides a minimal setup suitable for development,
+# testing, and small-scale deployments.
+
+# Single replica for development
+replicaCount: 1
+
+image:
+  registry: docker.io
+  repository: hawkfish/hawkfish-controller
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# Minimal resource allocation
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Disable autoscaling for simplicity
+autoscaling:
+  enabled: false
+
+# Basic persistent storage
+persistence:
+  enabled: true
+  storageClass: ""  # Use default storage class
+  size: 10Gi
+  
+  # Disable ISO storage for basic setup
+  isos:
+    enabled: false
+
+# Simple ingress configuration
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  hosts:
+    - host: hawkfish.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# HawkFish basic configuration
+hawkfish:
+  # Development settings
+  logLevel: "DEBUG"
+  workerCount: 2
+  
+  # Simplified authentication
+  auth:
+    enabled: false  # Disable auth for development
+  
+  # Enable UI
+  ui:
+    enabled: true
+    title: "HawkFish Development"
+  
+  # Enable metrics
+  metrics:
+    enabled: true
+  
+  # Use SQLite for simplicity
+  database:
+    type: "sqlite"
+    path: "/var/lib/hawkfish/data/hawkfish.db"
+  
+  # Disable multi-tenancy for simplicity
+  multiTenant:
+    enabled: false
+  
+  # Enable personas
+  personas:
+    enabled: true
+    autoDetect: true
+  
+  # Basic event configuration
+  events:
+    enabled: true
+    retentionDays: 7
+  
+  # No TLS for development
+  tls:
+    mode: "off"
+
+# Relaxed security for development
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+    - ALL
+
+# Simple service configuration
+service:
+  type: ClusterIP
+  port: 80
+
+# Disable monitoring for basic setup
+serviceMonitor:
+  enabled: false
+
+# Disable network policies for development
+networkPolicy:
+  enabled: false
+
+# Disable external databases
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+# Enable tests
+tests:
+  enabled: true
+
+# Development environment variables
+env:
+  - name: HF_DEBUG
+    value: "true"
+  - name: HF_LOG_LEVEL
+    value: "DEBUG"
+
+# No node selection for development
+nodeSelector: {}
+
+# No tolerations
+tolerations: []
+
+# No affinity rules
+affinity: {}
