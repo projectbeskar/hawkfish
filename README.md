@@ -218,9 +218,12 @@ docker-compose up -d
 
 ### Kubernetes
 ```bash
-# Helm deployment
-helm repo add hawkfish https://charts.hawkfish.local
-helm install hawkfish hawkfish/hawkfish-controller
+# Helm deployment from repository
+helm repo add hawkfish https://your-org.github.io/HawkFish/
+helm install hawkfish hawkfish/hawkfish --namespace hawkfish --create-namespace
+
+# Or install from local charts
+helm install hawkfish ./charts/hawkfish --namespace hawkfish --create-namespace
 ```
 
 ### Configuration

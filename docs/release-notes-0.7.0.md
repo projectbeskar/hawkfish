@@ -201,7 +201,7 @@ docker-compose up -d
 ### Kubernetes Migration
 ```bash
 # Update Helm chart
-helm upgrade hawkfish deploy/helm/ \
+helm upgrade hawkfish charts/hawkfish/ \
   --set image.tag=0.7.0 \
   --set hawkfish.ui.enabled=true
 ```

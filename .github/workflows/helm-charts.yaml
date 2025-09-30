@@ -1,0 +1,281 @@
+name: Helm Charts
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm-charts.yaml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm-charts.yaml'
+  release:
+    types: [published]
+
+env:
+  HELM_VERSION: '3.12.0'
+  CHART_TESTING_VERSION: '3.8.0'
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+
+      - name: Lint Helm charts
+        run: |
+          ct lint --target-branch ${{ github.event.repository.default_branch }} \
+                  --chart-dirs charts \
+                  --validate-maintainers=false
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.8.0
+        if: github.event_name == 'pull_request'
+
+      - name: Install charts on kind cluster
+        if: github.event_name == 'pull_request'
+        run: |
+          ct install --target-branch ${{ github.event.repository.default_branch }} \
+                     --chart-dirs charts
+
+  validate-chart-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Validate Chart.yaml schema
+        run: |
+          for chart in charts/*/Chart.yaml; do
+            echo "Validating $chart"
+            helm show chart $(dirname $chart) > /dev/null
+          done
+
+      - name: Validate values.yaml schema
+        run: |
+          for chart in charts/*/values.yaml; do
+            echo "Validating $chart"
+            helm template test $(dirname $chart) --dry-run > /dev/null
+          done
+
+      - name: Check for required files
+        run: |
+          for chart_dir in charts/*/; do
+            chart_name=$(basename $chart_dir)
+            echo "Checking required files for $chart_name"
+            
+            # Check for required files
+            required_files=("Chart.yaml" "values.yaml" "templates/_helpers.tpl")
+            for file in "${required_files[@]}"; do
+              if [[ ! -f "$chart_dir/$file" ]]; then
+                echo "ERROR: Missing required file: $chart_dir/$file"
+                exit 1
+              fi
+            done
+            
+            # Check for templates directory
+            if [[ ! -d "$chart_dir/templates" ]]; then
+              echo "ERROR: Missing templates directory: $chart_dir/templates"
+              exit 1
+            fi
+            
+            echo "All required files present for $chart_name"
+          done
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov security scan
+        run: |
+          for chart_dir in charts/*/; do
+            chart_name=$(basename $chart_dir)
+            echo "Security scanning $chart_name"
+            
+            # Generate manifests for security scanning
+            helm template $chart_name $chart_dir --output-dir /tmp/manifests/$chart_name
+            
+            # Run Checkov on generated manifests
+            checkov -d /tmp/manifests/$chart_name \
+                    --framework kubernetes \
+                    --soft-fail \
+                    --output cli
+          done
+
+  package-and-publish:
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, validate-chart-schema, security-scan]
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Extract version from release
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION_NUMBER="${VERSION#v}"
+          echo "version=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update chart versions
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for chart_dir in charts/*/; do
+            chart_name=$(basename $chart_dir)
+            echo "Updating version for $chart_name to $VERSION"
+            
+            # Update Chart.yaml
+            sed -i "s/^version: .*/version: $VERSION/" $chart_dir/Chart.yaml
+            sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" $chart_dir/Chart.yaml
+            
+            # Validate updated chart
+            helm lint $chart_dir
+          done
+
+      - name: Package Helm charts
+        run: |
+          mkdir -p ./packaged-charts
+          for chart_dir in charts/*/; do
+            chart_name=$(basename $chart_dir)
+            echo "Packaging $chart_name"
+            helm package $chart_dir --destination ./packaged-charts/
+          done
+
+      - name: Generate chart index
+        run: |
+          helm repo index ./packaged-charts --url https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/
+
+      - name: Upload chart packages to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            packaged-charts/*.tgz
+            packaged-charts/index.yaml
+          tag_name: ${{ steps.version.outputs.tag }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push charts to OCI registry
+        run: |
+          for chart_package in packaged-charts/*.tgz; do
+            chart_name=$(basename $chart_package .tgz | sed 's/-[0-9].*//')
+            chart_version="${{ steps.version.outputs.version }}"
+            
+            echo "Pushing $chart_name:$chart_version to OCI registry"
+            helm push $chart_package oci://ghcr.io/${{ github.repository_owner }}/charts
+          done
+
+  update-chart-repo:
+    runs-on: ubuntu-latest
+    needs: [package-and-publish]
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: gh-pages
+
+      - name: Download packaged charts
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-charts
+          path: charts-temp/
+        continue-on-error: true
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Update Helm repository
+        run: |
+          cd gh-pages
+          
+          # Copy new charts
+          if [[ -d ../charts-temp ]]; then
+            cp ../charts-temp/*.tgz . || true
+          fi
+          
+          # Generate new index
+          helm repo index . --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Update Helm repository for release ${{ github.event.release.tag_name }}" || exit 0
+          git push
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, validate-chart-schema, security-scan]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          if [[ "${{ needs.lint-and-test.result }}" == "success" && \
+                "${{ needs.validate-chart-schema.result }}" == "success" && \
+                "${{ needs.security-scan.result }}" == "success" ]]; then
+            echo "All Helm chart validations passed successfully!"
+          else
+            echo "Some Helm chart validations failed:"
+            echo "  Lint and Test: ${{ needs.lint-and-test.result }}"
+            echo "  Schema Validation: ${{ needs.validate-chart-schema.result }}"
+            echo "  Security Scan: ${{ needs.security-scan.result }}"
+            exit 1
+          fi

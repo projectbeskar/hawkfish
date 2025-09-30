@@ -8,7 +8,7 @@ This directory contains comprehensive examples for deploying and managing HawkFi
 
 ```bash
 # Install HawkFish with default settings
-helm repo add hawkfish https://charts.hawkfish.local
+helm repo add hawkfish https://your-org.github.io/HawkFish/
 helm install hawkfish hawkfish/hawkfish
 ```
 
@@ -76,7 +76,7 @@ helm install hawkfish hawkfish/hawkfish \
 
 1. **Add Helm Repository**
    ```bash
-   helm repo add hawkfish https://charts.hawkfish.local
+   helm repo add hawkfish https://your-org.github.io/HawkFish/
    helm repo update
    ```
 

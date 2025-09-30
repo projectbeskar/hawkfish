@@ -118,7 +118,7 @@ services:
 
 ```bash
 # Install from local chart
-helm install hawkfish deploy/helm/ \
+helm install hawkfish charts/hawkfish/ \
   --values my-values.yaml \
   --namespace hawkfish \
   --create-namespace

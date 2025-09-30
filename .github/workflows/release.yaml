@@ -174,12 +174,12 @@ jobs:
       - name: Update Helm chart version
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
-          sed -i "s/^version: .*/version: $VERSION/" deploy/helm/Chart.yaml
-          sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" deploy/helm/Chart.yaml
+          sed -i "s/^version: .*/version: $VERSION/" charts/hawkfish/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" charts/hawkfish/Chart.yaml
           
       - name: Package Helm chart
         run: |
-          helm package deploy/helm/ --destination ./helm-charts/
+          helm package charts/hawkfish/ --destination ./helm-charts/
           
       - name: Upload Helm chart
         uses: actions/upload-artifact@v4
