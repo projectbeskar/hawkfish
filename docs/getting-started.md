@@ -255,10 +255,28 @@ curl -X POST http://localhost:8080/redfish/v1/Systems \
 
 #### Delete the Session (Logout)
 
-When you're done, delete the session:
+When you're done, delete the session. The session ID is returned when you create the session:
 
 ```bash
-curl -X DELETE http://localhost:8080/redfish/v1/SessionService/Sessions/1234567890 \
+# When logging in, capture both the token AND session ID
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "Content-Type: application/json" \
+  -d '{"UserName": "admin", "Password": "admin"}')
+
+# Extract both values
+TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.Token')
+SESSION_ID=$(echo $LOGIN_RESPONSE | jq -r '.Id')
+
+# Later, delete the session using both
+curl -X DELETE http://localhost:8080/redfish/v1/SessionService/Sessions/$SESSION_ID \
+  -H "X-Auth-Token: $TOKEN"
+```
+
+**Tip**: If you lost your session ID, you can list all sessions:
+
+```bash
+# List all active sessions
+curl http://localhost:8080/redfish/v1/SessionService/Sessions \
   -H "X-Auth-Token: $TOKEN"
 ```
 
@@ -504,6 +522,49 @@ hawkfish-controller
 7. **Use environment-specific credentials** (don't hardcode)
 
 ### Troubleshooting Authentication
+
+#### Problem: How do I find my session ID?
+
+The session ID is returned in the login response. Always save it:
+
+**Best Practice:**
+```bash
+# Save the entire login response
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "Content-Type: application/json" \
+  -d '{"UserName": "admin", "Password": "admin"}')
+
+# Parse out what you need
+TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.Token')
+SESSION_ID=$(echo $LOGIN_RESPONSE | jq -r '.Id')
+
+# Store them for later use
+echo "TOKEN=$TOKEN" > .hawkfish_session
+echo "SESSION_ID=$SESSION_ID" >> .hawkfish_session
+```
+
+**If you lost the session ID:**
+
+Option 1 - List all sessions:
+```bash
+curl http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "X-Auth-Token: $TOKEN" | jq .
+```
+
+Option 2 - Extract from the @odata.id in the login response:
+```bash
+# The session ID is the last part of the @odata.id
+SESSION_ID=$(echo $LOGIN_RESPONSE | jq -r '.["@odata.id"]' | awk -F'/' '{print $NF}')
+```
+
+Option 3 - Look at the Location header:
+```bash
+# Use -i to see headers
+curl -i -X POST http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "Content-Type: application/json" \
+  -d '{"UserName": "admin", "Password": "admin"}' | grep Location
+# Location: /redfish/v1/SessionService/Sessions/SESSION_ID_HERE
+```
 
 #### Problem: 401 Unauthorized
 
