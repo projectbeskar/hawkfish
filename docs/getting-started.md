@@ -155,6 +155,393 @@ Open your browser to: `http://localhost:8080/ui/`
 
 Open your browser to: `http://localhost:8080/docs`
 
+## Authentication
+
+HawkFish supports multiple authentication modes. For testing, you can disable authentication, but **always use authentication in production**.
+
+### Authentication Modes
+
+HawkFish supports three authentication modes:
+
+1. **`none`** - No authentication (development/testing only)
+2. **`sessions`** - Token-based session authentication (recommended for production)
+3. **`basic`** - HTTP Basic authentication
+
+### Option 1: No Authentication (Testing Only)
+
+```bash
+export HF_AUTH="none"
+hawkfish-controller
+
+# Access API without authentication
+curl http://localhost:8080/redfish/v1/Systems
+```
+
+**Warning**: Only use this in trusted development environments.
+
+### Option 2: Session-Based Authentication (Recommended)
+
+Session-based authentication uses tokens for secure API access.
+
+#### Start HawkFish with Authentication
+
+```bash
+# Enable session authentication
+export LIBVIRT_URI="qemu:///system"
+export HF_API_HOST="0.0.0.0"
+export HF_API_PORT="8080"
+export HF_AUTH="sessions"
+export HF_UI_ENABLED="true"
+
+# Start the controller
+hawkfish-controller
+```
+
+#### Create a User Session
+
+First, authenticate to get a session token:
+
+```bash
+# Login to create a session
+curl -X POST http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "UserName": "admin",
+    "Password": "admin"
+  }'
+```
+
+**Response:**
+```json
+{
+  "@odata.type": "#Session.v1_0_0.Session",
+  "Id": "1234567890",
+  "Name": "User Session",
+  "UserName": "admin",
+  "Token": "abc123def456ghi789jkl012mno345pqr678",
+  "@odata.id": "/redfish/v1/SessionService/Sessions/1234567890"
+}
+```
+
+#### Use the Session Token
+
+Include the token in the `X-Auth-Token` header for all API requests:
+
+```bash
+# Save the token
+TOKEN="abc123def456ghi789jkl012mno345pqr678"
+
+# Use the token for authenticated requests
+curl http://localhost:8080/redfish/v1/Systems \
+  -H "X-Auth-Token: $TOKEN"
+
+# Power on a system
+curl -X POST http://localhost:8080/redfish/v1/Systems/test-vm/Actions/ComputerSystem.Reset \
+  -H "X-Auth-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ResetType": "On"}'
+
+# Create a new system
+curl -X POST http://localhost:8080/redfish/v1/Systems \
+  -H "X-Auth-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Name": "authenticated-vm",
+    "Memory": 2048,
+    "ProcessorCount": 2,
+    "DiskSize": 20480
+  }'
+```
+
+#### Delete the Session (Logout)
+
+When you're done, delete the session:
+
+```bash
+curl -X DELETE http://localhost:8080/redfish/v1/SessionService/Sessions/1234567890 \
+  -H "X-Auth-Token: $TOKEN"
+```
+
+### Option 3: Basic Authentication
+
+HTTP Basic authentication sends credentials with each request.
+
+#### Start HawkFish with Basic Auth
+
+```bash
+export HF_AUTH="basic"
+hawkfish-controller
+```
+
+#### Use Basic Authentication
+
+```bash
+# Include credentials in each request
+curl -u admin:admin http://localhost:8080/redfish/v1/Systems
+
+# Or use base64 encoded credentials
+curl -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  http://localhost:8080/redfish/v1/Systems
+```
+
+### Complete Authentication Example
+
+Here's a complete workflow with authentication:
+
+```bash
+# 1. Start HawkFish with authentication enabled
+export LIBVIRT_URI="qemu:///system"
+export HF_AUTH="sessions"
+export HF_API_HOST="0.0.0.0"
+export HF_API_PORT="8080"
+hawkfish-controller &
+
+# Wait for startup
+sleep 3
+
+# 2. Login and get session token
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "Content-Type: application/json" \
+  -d '{"UserName": "admin", "Password": "admin"}')
+
+# 3. Extract token from response
+TOKEN=$(echo $LOGIN_RESPONSE | grep -o '"Token":"[^"]*"' | cut -d'"' -f4)
+echo "Session Token: $TOKEN"
+
+# 4. Use the token for API operations
+echo "Listing systems..."
+curl -s http://localhost:8080/redfish/v1/Systems \
+  -H "X-Auth-Token: $TOKEN" | jq .
+
+# 5. Get system details
+echo "Getting system details..."
+curl -s http://localhost:8080/redfish/v1/Systems/my-vm \
+  -H "X-Auth-Token: $TOKEN" | jq .
+
+# 6. Power on a system
+echo "Powering on system..."
+curl -X POST http://localhost:8080/redfish/v1/Systems/my-vm/Actions/ComputerSystem.Reset \
+  -H "X-Auth-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ResetType": "On"}'
+
+# 7. Logout (delete session)
+SESSION_ID=$(echo $LOGIN_RESPONSE | grep -o '"Id":"[^"]*"' | cut -d'"' -f4)
+curl -X DELETE http://localhost:8080/redfish/v1/SessionService/Sessions/$SESSION_ID \
+  -H "X-Auth-Token: $TOKEN"
+
+echo "Session terminated"
+```
+
+### Python Example with Authentication
+
+Here's a Python example using the session API:
+
+```python
+import requests
+import json
+
+# HawkFish API endpoint
+BASE_URL = "http://localhost:8080"
+
+class HawkFishClient:
+    def __init__(self, base_url, username="admin", password="admin"):
+        self.base_url = base_url
+        self.username = username
+        self.password = password
+        self.session_token = None
+        self.session_id = None
+    
+    def login(self):
+        """Create a session and get authentication token."""
+        url = f"{self.base_url}/redfish/v1/SessionService/Sessions"
+        payload = {
+            "UserName": self.username,
+            "Password": self.password
+        }
+        
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        
+        data = response.json()
+        self.session_token = data["Token"]
+        self.session_id = data["Id"]
+        
+        print(f"Logged in successfully. Session ID: {self.session_id}")
+        return self.session_token
+    
+    def logout(self):
+        """Delete the session."""
+        if not self.session_token or not self.session_id:
+            return
+        
+        url = f"{self.base_url}/redfish/v1/SessionService/Sessions/{self.session_id}"
+        headers = {"X-Auth-Token": self.session_token}
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        print("Logged out successfully")
+        self.session_token = None
+        self.session_id = None
+    
+    def get_headers(self):
+        """Get headers with authentication token."""
+        if not self.session_token:
+            raise ValueError("Not authenticated. Call login() first.")
+        return {"X-Auth-Token": self.session_token}
+    
+    def list_systems(self):
+        """List all systems."""
+        url = f"{self.base_url}/redfish/v1/Systems"
+        response = requests.get(url, headers=self.get_headers())
+        response.raise_for_status()
+        return response.json()
+    
+    def get_system(self, system_id):
+        """Get details of a specific system."""
+        url = f"{self.base_url}/redfish/v1/Systems/{system_id}"
+        response = requests.get(url, headers=self.get_headers())
+        response.raise_for_status()
+        return response.json()
+    
+    def power_on(self, system_id):
+        """Power on a system."""
+        url = f"{self.base_url}/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset"
+        payload = {"ResetType": "On"}
+        response = requests.post(url, json=payload, headers=self.get_headers())
+        response.raise_for_status()
+        return response.json()
+    
+    def create_system(self, name, memory_mb, cpu_count, disk_gb):
+        """Create a new system."""
+        url = f"{self.base_url}/redfish/v1/Systems"
+        payload = {
+            "Name": name,
+            "Memory": memory_mb,
+            "ProcessorCount": cpu_count,
+            "DiskSize": disk_gb * 1024  # Convert to MB
+        }
+        response = requests.post(url, json=payload, headers=self.get_headers())
+        response.raise_for_status()
+        return response.json()
+
+# Usage example
+if __name__ == "__main__":
+    client = HawkFishClient("http://localhost:8080", "admin", "admin")
+    
+    try:
+        # Login
+        client.login()
+        
+        # List systems
+        systems = client.list_systems()
+        print(f"Found {systems['Members@odata.count']} systems")
+        
+        # Get details of first system
+        if systems["Members"]:
+            system_url = systems["Members"][0]["@odata.id"]
+            system_id = system_url.split("/")[-1]
+            
+            system_details = client.get_system(system_id)
+            print(f"System: {system_details['Name']}")
+            print(f"Power State: {system_details['PowerState']}")
+            print(f"Memory: {system_details['MemorySummary']['TotalSystemMemoryGiB']} GiB")
+        
+        # Create a new system
+        new_system = client.create_system(
+            name="authenticated-vm",
+            memory_mb=4096,
+            cpu_count=4,
+            disk_gb=50
+        )
+        print(f"Created system: {new_system['Name']}")
+        
+    finally:
+        # Always logout
+        client.logout()
+```
+
+### Authentication with Web UI
+
+When using the web UI with authentication enabled:
+
+1. Navigate to `http://localhost:8080/ui/`
+2. You'll see a login page
+3. Enter credentials (default: `admin` / `admin`)
+4. The UI will automatically handle session token management
+
+### Default Credentials
+
+The default credentials for HawkFish are:
+
+- **Username**: `admin`
+- **Password**: `admin`
+
+**Important**: Change these credentials in production environments.
+
+### Managing Users
+
+User management in HawkFish is handled through the configuration or external authentication systems. For the built-in authentication:
+
+```bash
+# Configure custom credentials via environment variables
+export HF_ADMIN_USERNAME="myadmin"
+export HF_ADMIN_PASSWORD="secure-password-here"
+export HF_AUTH="sessions"
+
+hawkfish-controller
+```
+
+### Authentication Best Practices
+
+1. **Never use `none` auth in production**
+2. **Always use TLS/HTTPS** with authentication
+3. **Rotate session tokens regularly** (sessions expire after inactivity)
+4. **Use strong passwords** for the admin account
+5. **Delete sessions when done** (logout properly)
+6. **Monitor authentication failures** via audit logs
+7. **Use environment-specific credentials** (don't hardcode)
+
+### Troubleshooting Authentication
+
+#### Problem: 401 Unauthorized
+
+```
+{"error": "@Message.ExtendedInfo": [...], "code": 401}
+```
+
+**Solutions:**
+
+1. Ensure you're including the `X-Auth-Token` header
+2. Verify the token is valid (not expired)
+3. Check you logged in successfully
+
+#### Problem: Token Expired
+
+Sessions expire after a period of inactivity (default: 30 minutes).
+
+**Solution**: Login again to get a new token:
+
+```bash
+# Get a new session token
+curl -X POST http://localhost:8080/redfish/v1/SessionService/Sessions \
+  -H "Content-Type: application/json" \
+  -d '{"UserName": "admin", "Password": "admin"}'
+```
+
+#### Problem: Invalid Credentials
+
+```
+{"error": "Invalid credentials"}
+```
+
+**Solutions:**
+
+1. Verify username and password are correct
+2. Check if you're using the configured credentials
+3. Ensure authentication mode is set correctly
+
 ## Common Libvirt URI Formats
 
 HawkFish supports all standard libvirt URIs:
