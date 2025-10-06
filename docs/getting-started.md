@@ -282,25 +282,38 @@ curl http://localhost:8080/redfish/v1/SessionService/Sessions \
 
 ### Option 3: Basic Authentication
 
-HTTP Basic authentication sends credentials with each request.
+HTTP Basic authentication sends credentials with each request. This is the **standard Redfish authentication method** that most BMC clients expect.
 
 #### Start HawkFish with Basic Auth
 
 ```bash
 export HF_AUTH="basic"
+export LIBVIRT_URI="qemu:///system"
 hawkfish-controller
 ```
 
 #### Use Basic Authentication
 
+Basic authentication works exactly like standard Redfish/BMC authentication:
+
 ```bash
-# Include credentials in each request
+# Include credentials in each request (-u for curl)
 curl -u admin:admin http://localhost:8080/redfish/v1/Systems
 
-# Or use base64 encoded credentials
+# Get system details
+curl -u admin:admin http://localhost:8080/redfish/v1/Systems/my-vm
+
+# Power on a system
+curl -u admin:admin -X POST http://localhost:8080/redfish/v1/Systems/my-vm/Actions/ComputerSystem.Reset \
+  -H "Content-Type: application/json" \
+  -d '{"ResetType": "On"}'
+
+# Or use base64 encoded credentials in Authorization header
 curl -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   http://localhost:8080/redfish/v1/Systems
 ```
+
+**Note**: Basic auth works with **both** `HF_AUTH="basic"` and `HF_AUTH="sessions"` modes. In sessions mode, you can use either Basic auth OR session tokens, providing maximum compatibility.
 
 ### Complete Authentication Example
 

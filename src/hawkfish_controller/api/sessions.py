@@ -1,7 +1,8 @@
+import base64
 import os
 import time
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from ..config import settings
 from ..services.users import set_user, user_count, verify_user
@@ -40,16 +41,75 @@ async def create_session(body: dict):
     }
 
 
-def require_session(x_auth_token: str | None = Header(default=None, alias="X-Auth-Token")) -> Session:
+async def require_session(
+    request: Request,
+    x_auth_token: str | None = Header(default=None, alias="X-Auth-Token"),
+    authorization: str | None = Header(default=None)
+) -> Session:
+    """
+    Require authentication via X-Auth-Token (sessions) or HTTP Basic Auth.
+    Supports multiple authentication modes based on HF_AUTH setting.
+    """
+    # If auth is disabled, return permissive session
     if getattr(settings, 'auth_mode', None) == "none":
-        # return a permissive session for local/test mode
         dev_token = os.environ.get("HF_DEV_TOKEN", "dev")
-        return Session(token=dev_token, username="local", role="admin", created_at=0.0, expires_at=1e12, last_activity=time.time())  # type: ignore[name-defined]
-    if not x_auth_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-Auth-Token")
-    session = global_session_store.get(x_auth_token)
-    if not session:
+        return Session(token=dev_token, username="local", role="admin", created_at=0.0, expires_at=1e12, last_activity=time.time())
+    
+    # Try X-Auth-Token first (session-based auth)
+    if x_auth_token:
+        session = global_session_store.get(x_auth_token)
+        if session:
+            return session
+        # Token provided but invalid
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
-    return session
+    
+    # Try HTTP Basic Authentication if mode is "basic" or "sessions"
+    if authorization and authorization.startswith("Basic "):
+        try:
+            # Decode Basic auth credentials
+            encoded_credentials = authorization.split(" ", 1)[1]
+            decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            username, password = decoded_credentials.split(":", 1)
+            
+            # Verify credentials
+            role = await verify_user(username, password)
+            if role:
+                # Create an ephemeral session for basic auth (not stored in session store)
+                # This allows basic auth to work on every request without session management
+                return Session(
+                    token=f"basic-{username}",
+                    username=username,
+                    role=role,
+                    created_at=time.time(),
+                    expires_at=time.time() + 3600,  # 1 hour
+                    last_activity=time.time()
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials",
+                    headers={"WWW-Authenticate": "Basic realm=\"HawkFish\""}
+                )
+        except (ValueError, UnicodeDecodeError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Authorization header format",
+                headers={"WWW-Authenticate": "Basic realm=\"HawkFish\""}
+            )
+    
+    # No valid authentication provided
+    if settings.auth_mode == "basic":
+        # For basic auth mode, request basic authentication
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Basic realm=\"HawkFish\""}
+        )
+    else:
+        # For session mode, request token
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Auth-Token or Authorization header"
+        )
 
 
