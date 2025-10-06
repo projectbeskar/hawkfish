@@ -35,7 +35,7 @@ HawkFish provides a fully virtual "bare-metal" lab environment using Linux KVM/l
 #### Development Setup
 ```bash
 # Clone and install
-git clone https://github.com/your-org/HawkFish.git
+git clone https://github.com/projectbeskar/HawkFish.git
 cd HawkFish
 python -m venv .venv
 source .venv/bin/activate

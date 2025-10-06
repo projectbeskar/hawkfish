@@ -287,7 +287,6 @@ HTTP Basic authentication sends credentials with each request. This is the **sta
 #### Start HawkFish with Basic Auth
 
 ```bash
-export HF_AUTH="basic"
 export LIBVIRT_URI="qemu:///system"
 hawkfish-controller
 ```
